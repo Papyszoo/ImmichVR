@@ -46,8 +46,9 @@ Returns service information and available endpoints.
 ### 4. Dependencies
 - **File**: `services/ai/requirements.txt`
 - Core: Flask 3.0.0, Gunicorn 22.0.0
-- ML: PyTorch 2.1.2, Transformers 4.36.2
-- Image Processing: Pillow 10.2.0, NumPy 1.26.3, OpenCV 4.9.0.80
+- ML: PyTorch 2.6.0, Transformers 4.48.0
+- Image Processing: Pillow 10.3.0, NumPy 1.26.3, OpenCV 4.9.0.80
+- All dependencies updated to patched versions (no known vulnerabilities)
 
 ### 5. Documentation
 - **File**: `services/ai/README.md`
@@ -99,8 +100,16 @@ Returns service information and available endpoints.
 
 ## Code Quality
 
+### Security Updates
+All dependencies have been updated to patched versions addressing known vulnerabilities:
+- **Pillow**: 10.2.0 → 10.3.0 (fixes buffer overflow vulnerability)
+- **PyTorch**: 2.1.2 → 2.6.0 (fixes heap buffer overflow, use-after-free, and RCE vulnerabilities)
+- **Transformers**: 4.36.2 → 4.48.0 (fixes deserialization vulnerabilities)
+- **TorchVision**: 0.16.2 → 0.21.0 (compatibility with PyTorch 2.6.0)
+
 ### Security Scan Results
 - **CodeQL Analysis**: ✅ 0 alerts found
+- **Dependency Check**: ✅ 0 known vulnerabilities
 - **Code Review**: ✅ All feedback addressed
   - Fixed division by zero edge case
   - Improved cross-platform compatibility

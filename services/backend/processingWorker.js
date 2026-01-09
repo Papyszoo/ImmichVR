@@ -7,6 +7,10 @@
 const fs = require('fs').promises;
 const path = require('path');
 
+// Configuration constants
+const DEFAULT_MODEL_NAME = 'Depth-Anything-V2';
+const DEFAULT_MODEL_VERSION = 'small';
+
 class ProcessingWorker {
   constructor(queueManager, apiGateway, pool) {
     this.queueManager = queueManager;
@@ -138,10 +142,12 @@ class ProcessingWorker {
 
   /**
    * Store depth map metadata in database
+   * Note: Width and height are set to 0 as a placeholder.
+   * For accurate dimensions, image processing library like 'sharp' would be needed.
    */
   async storeDepthMapMetadata(mediaItemId, depthMapPath, fileSize) {
-    // Get image dimensions (for now, we'll skip this - can be added later with sharp)
-    // For simplicity, we'll just store the basic info
+    const modelName = process.env.AI_MODEL_NAME || DEFAULT_MODEL_NAME;
+    const modelVersion = process.env.AI_MODEL_VERSION || DEFAULT_MODEL_VERSION;
     
     await this.pool.query(
       `INSERT INTO depth_map_cache 
@@ -155,7 +161,7 @@ class ProcessingWorker {
          accessed_at = NOW(),
          access_count = 0,
          updated_at = NOW()`,
-      [mediaItemId, depthMapPath, fileSize, 'png', 'Depth-Anything-V2', 'small']
+      [mediaItemId, depthMapPath, fileSize, 'png', modelName, modelVersion]
     );
   }
 

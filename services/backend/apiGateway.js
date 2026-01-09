@@ -14,7 +14,7 @@ class APIGateway {
     this.aiClient = axios.create({
       baseURL: aiServiceUrl,
       timeout: 120000, // 2 minutes for AI processing
-      validateStatus: (status) => status < 500, // Don't throw on 4xx errors
+      validateStatus: () => true, // Don't throw on any status code, handle in calling code
     });
   }
 

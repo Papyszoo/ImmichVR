@@ -64,7 +64,7 @@ if (autoStartWorker) {
 
 // Ensure upload directory exists
 fs.mkdir(uploadDir, { recursive: true }).catch(err => {
-  console.error('Failed to create upload directory:', err);
+  console.error('Failed to create upload directory - file uploads will fail:', err.message);
 });
 
 // Initialize Immich connector (optional - only if credentials are provided)

@@ -23,9 +23,10 @@ class QueueManager {
     // Define size brackets (in bytes)
     const SIZE_BRACKETS = 10; // Divide into 10 brackets
     const MAX_SIZE = 100 * 1024 * 1024; // 100MB as reference max
+    const PRIORITY_RANGE = 99; // Priority range within each media type (1-100 or 101-200)
     
     // Normalize file size to a value between 0-99
-    const sizeScore = Math.min(Math.floor((fileSize / MAX_SIZE) * SIZE_BRACKETS * 10), 99);
+    const sizeScore = Math.min(Math.floor((fileSize / MAX_SIZE) * PRIORITY_RANGE), PRIORITY_RANGE);
     
     if (mediaType === 'photo') {
       // Photos: priority 1-100

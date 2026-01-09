@@ -430,7 +430,14 @@ Monitor queue health via:
 
 ## Security Considerations
 
-- File size limit: 100MB (configurable in multer config)
-- Files stored in isolated directories
-- Database CASCADE DELETE ensures referential integrity
-- No direct file path exposure in API responses
+1. **File size limit**: 100MB max (configurable in multer config)
+2. **Files stored in isolated directories**
+3. **Database CASCADE DELETE ensures referential integrity**
+4. **No direct file path exposure in API responses**
+5. **Rate Limiting**: For production deployments, consider adding rate limiting middleware such as `express-rate-limit` to prevent abuse of API endpoints, especially for file uploads and queue operations.
+
+## Known Limitations
+
+1. **Depth map dimensions**: Currently stored as 0 (placeholder). Adding the `sharp` library would enable accurate dimension detection.
+2. **Single worker**: The processing worker processes one item at a time. For high-volume deployments, consider implementing multiple workers or a distributed queue system.
+3. **Rate limiting**: Not implemented in this version. Should be added for production use.

@@ -85,6 +85,10 @@ try {
 
 app.use(express.json());
 
+// Note: For production deployments, consider adding rate limiting middleware
+// such as 'express-rate-limit' to prevent abuse of API endpoints,
+// especially for file uploads and queue operations.
+
 app.get('/health', async (req, res) => {
   try {
     // Check database connectivity

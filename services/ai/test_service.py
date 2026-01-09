@@ -5,6 +5,8 @@ Test script for the Depth Anything V2 AI service.
 
 import sys
 import io
+import os
+import tempfile
 import requests
 from PIL import Image, ImageDraw
 
@@ -55,10 +57,12 @@ def test_depth_endpoint(base_url, image):
             print(f"  Response size: {len(response.content)} bytes")
             print(f"  Content-Type: {response.headers.get('Content-Type')}")
             
-            # Save the result
-            with open('/tmp/test_depth_output.png', 'wb') as f:
+            # Save the result to temp directory
+            temp_dir = tempfile.gettempdir()
+            output_path = os.path.join(temp_dir, 'test_depth_output.png')
+            with open(output_path, 'wb') as f:
                 f.write(response.content)
-            print(f"  Saved depth map to: /tmp/test_depth_output.png")
+            print(f"  Saved depth map to: {output_path}")
             return True
         else:
             print(f"✗ Depth generation failed with status {response.status_code}")
@@ -81,8 +85,10 @@ def main():
     # Create test image
     print("\nCreating test image...")
     test_image = create_test_image()
-    test_image.save('/tmp/test_input.png')
-    print(f"✓ Test image created and saved to: /tmp/test_input.png")
+    temp_dir = tempfile.gettempdir()
+    input_path = os.path.join(temp_dir, 'test_input.png')
+    test_image.save(input_path)
+    print(f"✓ Test image created and saved to: {input_path}")
     
     # Test depth endpoint
     if test_depth_endpoint(base_url, test_image):

@@ -118,8 +118,15 @@ def process_depth():
         
         # Convert depth map to numpy array and normalize
         depth_array = np.array(depth_map)
-        depth_normalized = ((depth_array - depth_array.min()) / 
-                          (depth_array.max() - depth_array.min()) * 255).astype(np.uint8)
+        depth_min = depth_array.min()
+        depth_max = depth_array.max()
+        
+        # Handle edge case where depth is uniform (avoid division by zero)
+        if depth_max - depth_min < 1e-10:
+            depth_normalized = np.full_like(depth_array, 128, dtype=np.uint8)
+        else:
+            depth_normalized = ((depth_array - depth_min) / 
+                              (depth_max - depth_min) * 255).astype(np.uint8)
         
         # Convert back to PIL Image
         depth_image = Image.fromarray(depth_normalized)

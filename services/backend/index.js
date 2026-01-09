@@ -1,5 +1,6 @@
 const express = require('express');
 const { Pool } = require('pg');
+const ImmichConnector = require('./immichConnector');
 
 const app = express();
 const PORT = process.env.BACKEND_PORT || 3000;
@@ -24,6 +25,22 @@ pool.query('SELECT NOW()', (err, res) => {
     console.log('Database connected successfully at:', res.rows[0].now);
   }
 });
+
+// Initialize Immich connector (optional - only if credentials are provided)
+let immichConnector = null;
+try {
+  if (process.env.IMMICH_URL && process.env.IMMICH_API_KEY) {
+    immichConnector = new ImmichConnector({
+      url: process.env.IMMICH_URL,
+      apiKey: process.env.IMMICH_API_KEY,
+    });
+    console.log('Immich connector initialized successfully');
+  } else {
+    console.log('Immich connector not initialized: IMMICH_URL or IMMICH_API_KEY not configured');
+  }
+} catch (error) {
+  console.error('Failed to initialize Immich connector:', error.message);
+}
 
 app.use(express.json());
 
@@ -109,6 +126,225 @@ app.get('/api/media/status', async (req, res) => {
     res.status(500).json({ 
       error: 'Failed to fetch media status', 
       message: error.message 
+    });
+  }
+});
+
+// ============================================================================
+// IMMICH CONNECTOR ENDPOINTS
+// ============================================================================
+
+// Middleware to check if Immich connector is initialized
+const requireImmichConnector = (req, res, next) => {
+  if (!immichConnector) {
+    return res.status(503).json({
+      error: 'Immich connector not configured',
+      message: 'Please set IMMICH_URL and IMMICH_API_KEY environment variables',
+    });
+  }
+  next();
+};
+
+// Test Immich connection
+app.get('/api/immich/test', requireImmichConnector, async (req, res) => {
+  try {
+    const result = await immichConnector.testConnection();
+    res.json({
+      status: 'success',
+      message: 'Connection to Immich successful',
+      data: result,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Connection test failed',
+      message: error.message,
+    });
+  }
+});
+
+// Get Immich server version
+app.get('/api/immich/version', requireImmichConnector, async (req, res) => {
+  try {
+    const version = await immichConnector.getServerVersion();
+    res.json({
+      status: 'success',
+      data: version,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to get server version',
+      message: error.message,
+    });
+  }
+});
+
+// Get asset statistics
+app.get('/api/immich/statistics', requireImmichConnector, async (req, res) => {
+  try {
+    const stats = await immichConnector.getAssetStatistics();
+    res.json({
+      status: 'success',
+      data: stats,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to get statistics',
+      message: error.message,
+    });
+  }
+});
+
+// Get all assets with pagination
+app.get('/api/immich/assets', requireImmichConnector, async (req, res) => {
+  try {
+    const options = {
+      size: parseInt(req.query.size) || 100,
+      page: parseInt(req.query.page) || 0,
+      isFavorite: req.query.isFavorite === 'true' ? true : undefined,
+      isArchived: req.query.isArchived === 'true' ? true : false,
+    };
+
+    const assets = await immichConnector.getAssets(options);
+    res.json({
+      status: 'success',
+      count: assets.length,
+      page: options.page,
+      size: options.size,
+      data: assets,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to fetch assets',
+      message: error.message,
+    });
+  }
+});
+
+// Get all photos
+app.get('/api/immich/photos', requireImmichConnector, async (req, res) => {
+  try {
+    const options = {
+      size: parseInt(req.query.size) || 100,
+      page: parseInt(req.query.page) || 0,
+    };
+
+    const photos = await immichConnector.getPhotos(options);
+    res.json({
+      status: 'success',
+      count: photos.length,
+      data: photos,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to fetch photos',
+      message: error.message,
+    });
+  }
+});
+
+// Get all videos
+app.get('/api/immich/videos', requireImmichConnector, async (req, res) => {
+  try {
+    const options = {
+      size: parseInt(req.query.size) || 100,
+      page: parseInt(req.query.page) || 0,
+    };
+
+    const videos = await immichConnector.getVideos(options);
+    res.json({
+      status: 'success',
+      count: videos.length,
+      data: videos,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to fetch videos',
+      message: error.message,
+    });
+  }
+});
+
+// Get specific asset info
+app.get('/api/immich/assets/:assetId', requireImmichConnector, async (req, res) => {
+  try {
+    const assetInfo = await immichConnector.getAssetInfo(req.params.assetId);
+    res.json({
+      status: 'success',
+      data: assetInfo,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to fetch asset info',
+      message: error.message,
+    });
+  }
+});
+
+// Get asset thumbnail
+app.get('/api/immich/assets/:assetId/thumbnail', requireImmichConnector, async (req, res) => {
+  try {
+    const options = {
+      format: req.query.format || 'JPEG',
+      size: req.query.size || 'preview',
+    };
+
+    const thumbnail = await immichConnector.getThumbnail(req.params.assetId, options);
+    
+    // Set appropriate content type
+    const contentType = options.format === 'WEBP' ? 'image/webp' : 'image/jpeg';
+    res.setHeader('Content-Type', contentType);
+    res.send(thumbnail);
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to fetch thumbnail',
+      message: error.message,
+    });
+  }
+});
+
+// Download full-resolution file
+app.get('/api/immich/assets/:assetId/file', requireImmichConnector, async (req, res) => {
+  try {
+    const file = await immichConnector.getFullResolutionFile(req.params.assetId);
+    
+    // Get asset info to set proper content type
+    const assetInfo = await immichConnector.getAssetInfo(req.params.assetId);
+    
+    if (assetInfo.originalMimeType) {
+      res.setHeader('Content-Type', assetInfo.originalMimeType);
+    }
+    if (assetInfo.originalFileName) {
+      res.setHeader('Content-Disposition', `attachment; filename="${assetInfo.originalFileName}"`);
+    }
+    
+    res.send(file);
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to fetch file',
+      message: error.message,
+    });
+  }
+});
+
+// Search assets
+app.post('/api/immich/search', requireImmichConnector, async (req, res) => {
+  try {
+    const searchCriteria = {
+      query: req.body.query || '',
+      type: req.body.type || 'ALL',
+      size: req.body.size || 100,
+    };
+
+    const results = await immichConnector.searchAssets(searchCriteria);
+    res.json({
+      status: 'success',
+      count: results.length,
+      data: results,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to search assets',
+      message: error.message,
     });
   }
 });

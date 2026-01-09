@@ -201,7 +201,7 @@ app.get('/api/immich/assets', requireImmichConnector, async (req, res) => {
       size: parseInt(req.query.size) || 100,
       page: parseInt(req.query.page) || 0,
       isFavorite: req.query.isFavorite === 'true' ? true : undefined,
-      isArchived: req.query.isArchived === 'true' ? true : false,
+      isArchived: req.query.isArchived === 'true',
     };
 
     const assets = await immichConnector.getAssets(options);

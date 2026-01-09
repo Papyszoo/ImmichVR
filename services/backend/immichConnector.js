@@ -13,8 +13,6 @@
  */
 
 const axios = require('axios');
-const stream = require('stream');
-const { promisify } = require('util');
 
 class ImmichConnector {
   /**

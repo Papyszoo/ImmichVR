@@ -663,6 +663,206 @@ app.post('/api/immich/search', requireImmichConnector, async (req, res) => {
   }
 });
 
+// Import media from Immich (fetch both thumbnail and full-resolution)
+app.post('/api/immich/import/:assetId', requireImmichConnector, async (req, res) => {
+  const { assetId } = req.params;
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    // Get asset info from Immich
+    const assetInfo = await immichConnector.getAssetInfo(assetId);
+
+    // Determine media type
+    let mediaType = 'photo';
+    if (assetInfo.type === 'VIDEO') {
+      mediaType = 'video';
+    }
+
+    // Check if already imported
+    const existingMedia = await client.query(
+      'SELECT id FROM media_items WHERE immich_asset_id = $1',
+      [assetId]
+    );
+
+    if (existingMedia.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        error: 'Asset already imported',
+        mediaItemId: existingMedia.rows[0].id,
+      });
+    }
+
+    // Fetch both thumbnail and full-resolution files
+    console.log(`Fetching thumbnail and full-resolution for Immich asset ${assetId}`);
+    
+    const thumbnailBuffer = await immichConnector.getThumbnail(assetId, { 
+      format: 'JPEG', 
+      size: 'preview' 
+    });
+    const fullResBuffer = await immichConnector.getFullResolutionFile(assetId);
+
+    // Save files to disk
+    await fs.mkdir(uploadDir, { recursive: true });
+    
+    const baseFilename = assetInfo.originalFileName || `immich_${assetId}`;
+    const safeName = baseFilename.replace(/[^a-zA-Z0-9._-]/g, '_');
+    
+    const thumbnailPath = path.join(uploadDir, `${safeName}_thumbnail.jpg`);
+    const fullResPath = path.join(uploadDir, safeName);
+    
+    await fs.writeFile(thumbnailPath, thumbnailBuffer);
+    await fs.writeFile(fullResPath, fullResBuffer);
+
+    // Insert media item with both paths
+    const mediaResult = await client.query(
+      `INSERT INTO media_items 
+       (original_filename, media_type, file_path, thumbnail_path, file_size, mime_type, 
+        immich_asset_id, source_type, captured_at, width, height)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'immich', $8, $9, $10)
+       RETURNING id`,
+      [
+        assetInfo.originalFileName || safeName,
+        mediaType,
+        fullResPath,
+        thumbnailPath,
+        fullResBuffer.length,
+        assetInfo.originalMimeType || 'image/jpeg',
+        assetId,
+        assetInfo.fileCreatedAt || null,
+        assetInfo.exifInfo?.exifImageWidth || null,
+        assetInfo.exifInfo?.exifImageHeight || null,
+      ]
+    );
+
+    const mediaItemId = mediaResult.rows[0].id;
+
+    // Add to processing queue
+    const queueId = await queueManager.enqueueMediaItem(mediaItemId);
+
+    await client.query('COMMIT');
+
+    res.status(201).json({
+      success: true,
+      message: 'Media imported from Immich and queued for processing',
+      mediaItemId,
+      queueId,
+      assetId,
+      filename: assetInfo.originalFileName,
+      thumbnailSize: thumbnailBuffer.length,
+      fullResSize: fullResBuffer.length,
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Immich import error:', error);
+    res.status(500).json({
+      error: 'Failed to import from Immich',
+      message: error.message,
+    });
+  } finally {
+    client.release();
+  }
+});
+
+// ============================================================================
+// DEPTH MAP RETRIEVAL ENDPOINTS
+// ============================================================================
+
+// Get depth map for a media item (by version type)
+app.get('/api/media/:mediaItemId/depth', async (req, res) => {
+  try {
+    const { mediaItemId } = req.params;
+    const versionType = req.query.version || 'full_resolution'; // 'thumbnail' or 'full_resolution'
+
+    // Validate version type
+    if (!['thumbnail', 'full_resolution'].includes(versionType)) {
+      return res.status(400).json({
+        error: 'Invalid version type',
+        message: 'Version must be "thumbnail" or "full_resolution"',
+      });
+    }
+
+    // Get depth map from cache
+    const result = await pool.query(
+      `SELECT file_path, file_size, format, model_name, model_version, generated_at
+       FROM depth_map_cache
+       WHERE media_item_id = $1 AND version_type = $2`,
+      [mediaItemId, versionType]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Depth map not found',
+        message: `No ${versionType} depth map available for this media item`,
+      });
+    }
+
+    const depthMap = result.rows[0];
+
+    // Update access stats
+    await pool.query(
+      `UPDATE depth_map_cache
+       SET accessed_at = NOW(), access_count = access_count + 1
+       WHERE media_item_id = $1 AND version_type = $2`,
+      [mediaItemId, versionType]
+    );
+
+    // Read and send the depth map file
+    const depthMapBuffer = await fs.readFile(depthMap.file_path);
+    
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('X-Depth-Map-Version', versionType);
+    res.setHeader('X-Model-Name', depthMap.model_name || 'unknown');
+    res.setHeader('X-Model-Version', depthMap.model_version || 'unknown');
+    res.setHeader('X-Generated-At', depthMap.generated_at?.toISOString() || 'unknown');
+    res.send(depthMapBuffer);
+
+  } catch (error) {
+    console.error('Error fetching depth map:', error);
+    res.status(500).json({
+      error: 'Failed to fetch depth map',
+      message: error.message,
+    });
+  }
+});
+
+// Get depth map metadata (without file content)
+app.get('/api/media/:mediaItemId/depth/info', async (req, res) => {
+  try {
+    const { mediaItemId } = req.params;
+
+    // Get all depth maps for this media item
+    const result = await pool.query(
+      `SELECT version_type, file_size, format, width, height, 
+              model_name, model_version, generated_at, access_count
+       FROM depth_map_cache
+       WHERE media_item_id = $1
+       ORDER BY version_type`,
+      [mediaItemId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: 'No depth maps found',
+        message: 'No depth maps available for this media item',
+      });
+    }
+
+    res.json({
+      mediaItemId,
+      depthMaps: result.rows,
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to fetch depth map info',
+      message: error.message,
+    });
+  }
+});
+
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM signal received: closing HTTP server');

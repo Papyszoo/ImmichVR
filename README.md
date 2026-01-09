@@ -43,6 +43,8 @@ Available configuration options:
 | `POSTGRES_DB`      | `immichvr`  | PostgreSQL database name       |
 | `BACKEND_PORT`     | `3000`      | Backend internal port          |
 | `AI_SERVICE_PORT`  | `5000`      | AI service internal port       |
+| `IMMICH_URL`       | -           | Immich instance URL (optional) |
+| `IMMICH_API_KEY`   | -           | Immich API key (optional)      |
 
 ### 3. Build the stack
 
@@ -130,6 +132,9 @@ docker compose exec <service-name> sh
 - **Container**: `immichvr-backend`
 - **Build Context**: `./services/backend`
 - **Health Endpoint**: `GET /health`
+- **Immich Integration**: Optional connection to Immich instance for fetching media
+
+For Immich integration documentation, see [IMMICH_CONNECTOR.md](services/backend/IMMICH_CONNECTOR.md).
 
 ### Frontend (React/Nginx)
 

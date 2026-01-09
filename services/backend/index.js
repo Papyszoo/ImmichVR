@@ -701,10 +701,16 @@ app.post('/api/immich/import/:assetId', requireImmichConnector, async (req, res)
     // Determine thumbnail format based on original mime type
     const thumbnailFormat = fileUtils.getThumbnailFormat(assetInfo.originalMimeType);
     
-    const thumbnailBuffer = await immichConnector.getThumbnail(assetId, { 
-      format: thumbnailFormat, 
-      size: 'preview' 
-    });
+    let thumbnailBuffer;
+    try {
+      thumbnailBuffer = await immichConnector.getThumbnail(assetId, { 
+        format: thumbnailFormat, 
+        size: 'preview' 
+      });
+    } catch (thumbnailError) {
+      throw new Error(`Failed to fetch thumbnail in ${thumbnailFormat} format: ${thumbnailError.message}`);
+    }
+    
     const fullResBuffer = await immichConnector.getFullResolutionFile(assetId);
 
     // Save files to disk

@@ -5,6 +5,14 @@
 
 const path = require('path');
 
+// Constants
+const FORMAT_EXTENSIONS = {
+  'JPEG': '.jpg',
+  'WEBP': '.webp',
+  'PNG': '.png',
+  'GIF': '.gif',
+};
+
 /**
  * Sanitize a filename for safe filesystem storage
  * Replaces unsafe characters with underscores
@@ -41,13 +49,6 @@ function getThumbnailFormat(mimeType) {
  * @returns {string} - File extension including dot (e.g., '.jpg')
  */
 function getExtensionForFormat(format) {
-  const FORMAT_EXTENSIONS = {
-    'JPEG': '.jpg',
-    'WEBP': '.webp',
-    'PNG': '.png',
-    'GIF': '.gif',
-  };
-  
   return FORMAT_EXTENSIONS[format.toUpperCase()] || '.jpg';
 }
 

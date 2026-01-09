@@ -11,6 +11,12 @@ const path = require('path');
 const DEFAULT_MODEL_NAME = 'Depth-Anything-V2';
 const DEFAULT_MODEL_VERSION = 'small';
 
+// Version-specific filename suffixes
+const VERSION_SUFFIXES = {
+  'thumbnail': '_thumb',
+  'full_resolution': ''
+};
+
 class ProcessingWorker {
   constructor(queueManager, apiGateway, pool) {
     this.queueManager = queueManager;
@@ -183,12 +189,6 @@ class ProcessingWorker {
     // Create depth maps directory if it doesn't exist
     const depthMapsDir = process.env.DEPTH_MAPS_DIR || '/data/depth_maps';
     await fs.mkdir(depthMapsDir, { recursive: true });
-
-    // Version-specific filename suffixes
-    const VERSION_SUFFIXES = {
-      'thumbnail': '_thumb',
-      'full_resolution': ''
-    };
 
     // Generate depth map filename with version type
     const baseFilename = path.parse(originalFilename).name;

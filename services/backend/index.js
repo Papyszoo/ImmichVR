@@ -7,6 +7,7 @@ const ImmichConnector = require('./immichConnector');
 const QueueManager = require('./queueManager');
 const APIGateway = require('./apiGateway');
 const ProcessingWorker = require('./processingWorker');
+const fileUtils = require('./fileUtils');
 
 const app = express();
 const PORT = process.env.BACKEND_PORT || 3000;
@@ -697,9 +698,8 @@ app.post('/api/immich/import/:assetId', requireImmichConnector, async (req, res)
     // Fetch both thumbnail and full-resolution files
     console.log(`Fetching thumbnail and full-resolution for Immich asset ${assetId}`);
     
-    // Determine thumbnail format based on original mime type (prefer JPEG for compatibility)
-    const isWebPSupported = assetInfo.originalMimeType?.includes('webp');
-    const thumbnailFormat = isWebPSupported ? 'WEBP' : 'JPEG';
+    // Determine thumbnail format based on original mime type
+    const thumbnailFormat = fileUtils.getThumbnailFormat(assetInfo.originalMimeType);
     
     const thumbnailBuffer = await immichConnector.getThumbnail(assetId, { 
       format: thumbnailFormat, 
@@ -711,12 +711,12 @@ app.post('/api/immich/import/:assetId', requireImmichConnector, async (req, res)
     await fs.mkdir(uploadDir, { recursive: true });
     
     const baseFilename = assetInfo.originalFileName || `immich_${assetId}`;
-    const safeName = baseFilename.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const safeName = fileUtils.sanitizeFilename(baseFilename);
     
-    // Use appropriate extension for thumbnail based on format
-    const thumbnailExt = thumbnailFormat === 'WEBP' ? '.webp' : '.jpg';
-    const baseNameWithoutExt = path.parse(safeName).name;
-    const originalExt = path.parse(safeName).ext || '.jpg';
+    // Use appropriate extensions for files
+    const thumbnailExt = fileUtils.getExtensionForFormat(thumbnailFormat);
+    const baseNameWithoutExt = fileUtils.getBaseFilename(safeName);
+    const originalExt = fileUtils.getExtension(safeName);
     
     const thumbnailPath = path.join(uploadDir, `${baseNameWithoutExt}_thumbnail${thumbnailExt}`);
     const fullResPath = path.join(uploadDir, `${baseNameWithoutExt}${originalExt}`);

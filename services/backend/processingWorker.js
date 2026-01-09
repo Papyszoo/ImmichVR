@@ -184,9 +184,15 @@ class ProcessingWorker {
     const depthMapsDir = process.env.DEPTH_MAPS_DIR || '/data/depth_maps';
     await fs.mkdir(depthMapsDir, { recursive: true });
 
+    // Version-specific filename suffixes
+    const VERSION_SUFFIXES = {
+      'thumbnail': '_thumb',
+      'full_resolution': ''
+    };
+
     // Generate depth map filename with version type
     const baseFilename = path.parse(originalFilename).name;
-    const versionSuffix = versionType === 'thumbnail' ? '_thumb' : '';
+    const versionSuffix = VERSION_SUFFIXES[versionType] || '';
     const depthMapFilename = `${baseFilename}_${mediaItemId}${versionSuffix}_depth.png`;
     const depthMapPath = path.join(depthMapsDir, depthMapFilename);
 

@@ -90,50 +90,71 @@ class ProcessingWorker {
 
         // Process both thumbnail (if available) and full-resolution versions
         const processedVersions = [];
+        const processingErrors = [];
 
         // Process thumbnail version first (smaller, faster)
         if (thumbnailPath) {
           console.log(`Processing thumbnail version for ${queueItem.original_filename}`);
-          const thumbnailDepthBuffer = await this.apiGateway.processDepthMap(thumbnailPath);
-          const thumbnailDepthPath = await this.saveDepthMap(
-            queueItem.media_item_id,
-            queueItem.original_filename,
-            thumbnailDepthBuffer,
-            'thumbnail'
-          );
-          await this.storeDepthMapMetadata(
-            queueItem.media_item_id,
-            thumbnailDepthPath,
-            thumbnailDepthBuffer.length,
-            'thumbnail'
-          );
-          processedVersions.push('thumbnail');
+          try {
+            const thumbnailDepthBuffer = await this.apiGateway.processDepthMap(thumbnailPath);
+            const thumbnailDepthPath = await this.saveDepthMap(
+              queueItem.media_item_id,
+              queueItem.original_filename,
+              thumbnailDepthBuffer,
+              'thumbnail'
+            );
+            await this.storeDepthMapMetadata(
+              queueItem.media_item_id,
+              thumbnailDepthPath,
+              thumbnailDepthBuffer.length,
+              'thumbnail'
+            );
+            processedVersions.push('thumbnail');
+          } catch (thumbError) {
+            console.error(`Failed to process thumbnail for ${queueItem.original_filename}:`, thumbError.message);
+            processingErrors.push(`thumbnail: ${thumbError.message}`);
+            // Continue to process full-resolution even if thumbnail fails
+          }
         }
 
         // Process full-resolution version
         console.log(`Processing full-resolution version for ${queueItem.original_filename}`);
-        const fullResDepthBuffer = await this.apiGateway.processDepthMap(fullResPath);
-        const fullResDepthPath = await this.saveDepthMap(
-          queueItem.media_item_id,
-          queueItem.original_filename,
-          fullResDepthBuffer,
-          'full_resolution'
-        );
-        await this.storeDepthMapMetadata(
-          queueItem.media_item_id,
-          fullResDepthPath,
-          fullResDepthBuffer.length,
-          'full_resolution'
-        );
-        processedVersions.push('full_resolution');
+        try {
+          const fullResDepthBuffer = await this.apiGateway.processDepthMap(fullResPath);
+          const fullResDepthPath = await this.saveDepthMap(
+            queueItem.media_item_id,
+            queueItem.original_filename,
+            fullResDepthBuffer,
+            'full_resolution'
+          );
+          await this.storeDepthMapMetadata(
+            queueItem.media_item_id,
+            fullResDepthPath,
+            fullResDepthBuffer.length,
+            'full_resolution'
+          );
+          processedVersions.push('full_resolution');
+        } catch (fullResError) {
+          console.error(`Failed to process full-resolution for ${queueItem.original_filename}:`, fullResError.message);
+          processingErrors.push(`full_resolution: ${fullResError.message}`);
+        }
+
+        // If no versions were successfully processed, fail the queue item
+        if (processedVersions.length === 0) {
+          throw new Error(`All versions failed: ${processingErrors.join('; ')}`);
+        }
 
         // Calculate processing duration
         const processingDuration = (Date.now() - startTime) / 1000; // in seconds
 
-        // Mark as completed
+        // Mark as completed (even if only partial success)
         await this.queueManager.markCompleted(queueItem.id, processingDuration);
 
-        console.log(`Successfully processed ${queueItem.original_filename} (${processedVersions.join(', ')}) in ${processingDuration.toFixed(2)}s`);
+        const statusMessage = processingErrors.length > 0
+          ? `Partially processed ${queueItem.original_filename} (${processedVersions.join(', ')}) with errors: ${processingErrors.join('; ')}`
+          : `Successfully processed ${queueItem.original_filename} (${processedVersions.join(', ')})`;
+        
+        console.log(`${statusMessage} in ${processingDuration.toFixed(2)}s`);
 
       } catch (error) {
         console.error(`Error processing ${queueItem.original_filename}:`, error.message);

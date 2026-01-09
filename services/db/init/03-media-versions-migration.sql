@@ -20,8 +20,18 @@ ALTER TABLE depth_map_cache
 ADD COLUMN version_type depth_map_version NOT NULL DEFAULT 'full_resolution';
 
 -- Drop the unique constraint on media_item_id to allow multiple versions
-ALTER TABLE depth_map_cache 
-DROP CONSTRAINT depth_map_cache_media_item_id_key;
+-- Using DO block to handle the case where the constraint might not exist or have a different name
+DO $$ 
+BEGIN
+    -- Try to drop the constraint if it exists
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'depth_map_cache_media_item_id_key' 
+        AND conrelid = 'depth_map_cache'::regclass
+    ) THEN
+        ALTER TABLE depth_map_cache DROP CONSTRAINT depth_map_cache_media_item_id_key;
+    END IF;
+END $$;
 
 -- Add new unique constraint for media_item_id + version_type
 ALTER TABLE depth_map_cache 

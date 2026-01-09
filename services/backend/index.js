@@ -697,8 +697,12 @@ app.post('/api/immich/import/:assetId', requireImmichConnector, async (req, res)
     // Fetch both thumbnail and full-resolution files
     console.log(`Fetching thumbnail and full-resolution for Immich asset ${assetId}`);
     
+    // Determine thumbnail format based on original mime type (prefer JPEG for compatibility)
+    const isWebPSupported = assetInfo.originalMimeType?.includes('webp');
+    const thumbnailFormat = isWebPSupported ? 'WEBP' : 'JPEG';
+    
     const thumbnailBuffer = await immichConnector.getThumbnail(assetId, { 
-      format: 'JPEG', 
+      format: thumbnailFormat, 
       size: 'preview' 
     });
     const fullResBuffer = await immichConnector.getFullResolutionFile(assetId);
@@ -709,8 +713,13 @@ app.post('/api/immich/import/:assetId', requireImmichConnector, async (req, res)
     const baseFilename = assetInfo.originalFileName || `immich_${assetId}`;
     const safeName = baseFilename.replace(/[^a-zA-Z0-9._-]/g, '_');
     
-    const thumbnailPath = path.join(uploadDir, `${safeName}_thumbnail.jpg`);
-    const fullResPath = path.join(uploadDir, safeName);
+    // Use appropriate extension for thumbnail based on format
+    const thumbnailExt = thumbnailFormat === 'WEBP' ? '.webp' : '.jpg';
+    const baseNameWithoutExt = path.parse(safeName).name;
+    const originalExt = path.parse(safeName).ext || '.jpg';
+    
+    const thumbnailPath = path.join(uploadDir, `${baseNameWithoutExt}_thumbnail${thumbnailExt}`);
+    const fullResPath = path.join(uploadDir, `${baseNameWithoutExt}${originalExt}`);
     
     await fs.writeFile(thumbnailPath, thumbnailBuffer);
     await fs.writeFile(fullResPath, fullResBuffer);

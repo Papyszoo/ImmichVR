@@ -1,9 +1,24 @@
 const express = require('express');
 const { Pool } = require('pg');
+const multer = require('multer');
+const fs = require('fs').promises;
+const path = require('path');
 const ImmichConnector = require('./immichConnector');
+const QueueManager = require('./queueManager');
+const APIGateway = require('./apiGateway');
+const ProcessingWorker = require('./processingWorker');
 
 const app = express();
 const PORT = process.env.BACKEND_PORT || 3000;
+
+// Configure multer for file uploads
+const uploadDir = process.env.UPLOAD_DIR || '/data/uploads';
+const upload = multer({ 
+  dest: uploadDir,
+  limits: {
+    fileSize: 100 * 1024 * 1024 // 100MB max file size
+  }
+});
 
 // Database connection pool
 const pool = new Pool({
@@ -26,6 +41,32 @@ pool.query('SELECT NOW()', (err, res) => {
   }
 });
 
+// Initialize Queue Manager
+const queueManager = new QueueManager(pool);
+console.log('Queue Manager initialized');
+
+// Initialize API Gateway
+const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://ai:5000';
+const apiGateway = new APIGateway(aiServiceUrl);
+console.log(`API Gateway initialized with AI service URL: ${aiServiceUrl}`);
+
+// Initialize Processing Worker
+const processingWorker = new ProcessingWorker(queueManager, apiGateway, pool);
+
+// Start processing worker if enabled (default: true)
+const autoStartWorker = process.env.AUTO_START_WORKER !== 'false';
+if (autoStartWorker) {
+  // Wait a bit for services to be ready, then start
+  setTimeout(() => {
+    processingWorker.start(5000); // Check queue every 5 seconds
+  }, 3000);
+}
+
+// Ensure upload directory exists
+fs.mkdir(uploadDir, { recursive: true }).catch(err => {
+  console.error('Failed to create upload directory - file uploads will fail:', err.message);
+});
+
 // Initialize Immich connector (optional - only if credentials are provided)
 let immichConnector = null;
 try {
@@ -43,6 +84,10 @@ try {
 }
 
 app.use(express.json());
+
+// Note: For production deployments, consider adding rate limiting middleware
+// such as 'express-rate-limit' to prevent abuse of API endpoints,
+// especially for file uploads and queue operations.
 
 app.get('/health', async (req, res) => {
   try {
@@ -128,6 +173,275 @@ app.get('/api/media/status', async (req, res) => {
       message: error.message 
     });
   }
+});
+
+// ============================================================================
+// API GATEWAY ENDPOINTS
+// ============================================================================
+
+// AI Service health check proxy
+app.get('/api/ai/health', async (req, res) => {
+  try {
+    const health = await apiGateway.checkAIServiceHealth();
+    if (health.healthy) {
+      res.json(health.data);
+    } else {
+      res.status(503).json({ 
+        error: 'AI service unhealthy', 
+        message: health.error 
+      });
+    }
+  } catch (error) {
+    res.status(500).json({ 
+      error: 'Failed to check AI service health', 
+      message: error.message 
+    });
+  }
+});
+
+// AI Service info proxy
+app.get('/api/ai/info', async (req, res) => {
+  try {
+    const info = await apiGateway.getAIServiceInfo();
+    res.json(info);
+  } catch (error) {
+    res.status(500).json({ 
+      error: 'Failed to get AI service info', 
+      message: error.message 
+    });
+  }
+});
+
+// ============================================================================
+// MEDIA UPLOAD & QUEUE ENDPOINTS
+// ============================================================================
+
+// Upload media and add to processing queue
+app.post('/api/media/upload', upload.single('media'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ 
+      error: 'No file uploaded', 
+      message: 'Please upload a media file' 
+    });
+  }
+
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+
+    // Determine media type from MIME type
+    let mediaType = 'photo';
+    if (req.file.mimetype.startsWith('video/')) {
+      mediaType = 'video';
+    }
+
+    // Insert media item
+    const mediaResult = await client.query(
+      `INSERT INTO media_items 
+       (original_filename, media_type, file_path, file_size, mime_type)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id`,
+      [
+        req.file.originalname,
+        mediaType,
+        req.file.path,
+        req.file.size,
+        req.file.mimetype
+      ]
+    );
+
+    const mediaItemId = mediaResult.rows[0].id;
+
+    // Add to processing queue
+    const queueId = await queueManager.enqueueMediaItem(mediaItemId);
+
+    await client.query('COMMIT');
+
+    res.status(201).json({
+      success: true,
+      message: 'Media uploaded and queued for processing',
+      mediaItemId,
+      queueId,
+      filename: req.file.originalname,
+      size: req.file.size,
+      type: mediaType
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Upload error:', error);
+    res.status(500).json({ 
+      error: 'Failed to upload media', 
+      message: error.message 
+    });
+  } finally {
+    client.release();
+  }
+});
+
+// ============================================================================
+// QUEUE MANAGEMENT ENDPOINTS
+// ============================================================================
+
+// Get queue statistics
+app.get('/api/queue/stats', async (req, res) => {
+  try {
+    const stats = await queueManager.getQueueStats();
+    res.json({
+      stats,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      error: 'Failed to get queue stats', 
+      message: error.message 
+    });
+  }
+});
+
+// Get queue items with filtering and pagination
+app.get('/api/queue/items', async (req, res) => {
+  try {
+    const options = {
+      status: req.query.status,
+      limit: parseInt(req.query.limit) || 50,
+      offset: parseInt(req.query.offset) || 0,
+      orderBy: req.query.orderBy || 'priority',
+      orderDirection: req.query.orderDirection?.toUpperCase() || 'ASC'
+    };
+
+    const items = await queueManager.getQueueItems(options);
+    
+    res.json({
+      count: items.length,
+      items,
+      pagination: {
+        limit: options.limit,
+        offset: options.offset
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      error: 'Failed to get queue items', 
+      message: error.message 
+    });
+  }
+});
+
+// Get specific queue item by ID
+app.get('/api/queue/items/:queueId', async (req, res) => {
+  try {
+    const queueItem = await queueManager.getQueueItem(req.params.queueId);
+    
+    if (!queueItem) {
+      return res.status(404).json({ 
+        error: 'Queue item not found' 
+      });
+    }
+    
+    res.json(queueItem);
+  } catch (error) {
+    res.status(500).json({ 
+      error: 'Failed to get queue item', 
+      message: error.message 
+    });
+  }
+});
+
+// Add media item to queue (for existing media)
+app.post('/api/queue/enqueue/:mediaItemId', async (req, res) => {
+  try {
+    const { mediaItemId } = req.params;
+    const maxAttempts = parseInt(req.body.maxAttempts) || 3;
+
+    const queueId = await queueManager.enqueueMediaItem(mediaItemId, maxAttempts);
+    
+    res.status(201).json({
+      success: true,
+      message: 'Media item added to queue',
+      queueId,
+      mediaItemId
+    });
+  } catch (error) {
+    res.status(400).json({ 
+      error: 'Failed to enqueue media item', 
+      message: error.message 
+    });
+  }
+});
+
+// Cancel a queue item
+app.post('/api/queue/items/:queueId/cancel', async (req, res) => {
+  try {
+    const result = await queueManager.cancelQueueItem(req.params.queueId);
+    res.json({
+      success: true,
+      message: 'Queue item cancelled',
+      queueId: result.id
+    });
+  } catch (error) {
+    res.status(400).json({ 
+      error: 'Failed to cancel queue item', 
+      message: error.message 
+    });
+  }
+});
+
+// Retry a failed queue item
+app.post('/api/queue/items/:queueId/retry', async (req, res) => {
+  try {
+    const result = await queueManager.retryQueueItem(req.params.queueId);
+    res.json({
+      success: true,
+      message: 'Queue item will be retried',
+      queueId: result.id
+    });
+  } catch (error) {
+    res.status(400).json({ 
+      error: 'Failed to retry queue item', 
+      message: error.message 
+    });
+  }
+});
+
+// Get processing worker status
+app.get('/api/queue/worker/status', (req, res) => {
+  const status = processingWorker.getStatus();
+  res.json({
+    ...status,
+    aiServiceUrl
+  });
+});
+
+// Start processing worker
+app.post('/api/queue/worker/start', (req, res) => {
+  if (processingWorker.isRunning()) {
+    return res.status(400).json({ 
+      error: 'Worker already running' 
+    });
+  }
+  
+  processingWorker.start(5000);
+  res.json({
+    success: true,
+    message: 'Processing worker started'
+  });
+});
+
+// Stop processing worker
+app.post('/api/queue/worker/stop', (req, res) => {
+  if (!processingWorker.isRunning()) {
+    return res.status(400).json({ 
+      error: 'Worker not running' 
+    });
+  }
+  
+  processingWorker.stop();
+  res.json({
+    success: true,
+    message: 'Processing worker stopped'
+  });
 });
 
 // ============================================================================
@@ -352,6 +666,7 @@ app.post('/api/immich/search', requireImmichConnector, async (req, res) => {
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM signal received: closing HTTP server');
+  processingWorker.stop();
   pool.end(() => {
     console.log('Database pool closed');
   });

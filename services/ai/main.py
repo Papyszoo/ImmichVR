@@ -6,13 +6,13 @@ import logging
 import subprocess
 import tempfile
 import zipfile
+import shutil
 from pathlib import Path
 from flask import Flask, jsonify, request, send_file
 from PIL import Image
 import numpy as np
 import torch
 from transformers import pipeline
-import cv2
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -262,7 +262,6 @@ def extract_video_frames():
         logger.error(f"Error extracting video frames: {str(e)}")
         # Cleanup on error
         if frames_dir and os.path.exists(frames_dir):
-            import shutil
             shutil.rmtree(frames_dir, ignore_errors=True)
         return jsonify({
             "error": "Frame extraction failed",
@@ -396,7 +395,6 @@ def process_video_depth():
         logger.info(f"Successfully processed {len(frame_files)} frames from {file.filename}")
         
         # Cleanup
-        import shutil
         if frames_dir and os.path.exists(frames_dir):
             shutil.rmtree(frames_dir, ignore_errors=True)
         if depth_maps_dir and os.path.exists(depth_maps_dir):
@@ -422,7 +420,6 @@ def process_video_depth():
         }), 500
     finally:
         # Clean up temp files
-        import shutil
         if temp_video_path and os.path.exists(temp_video_path):
             os.unlink(temp_video_path)
         if frames_dir and os.path.exists(frames_dir):

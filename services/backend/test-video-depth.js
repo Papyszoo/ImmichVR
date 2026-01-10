@@ -335,7 +335,9 @@ async function runTests() {
     
     // Summary
     console.log('╔══════════════════════════════════════════════════════════╗');
-    console.log(`║  Test Results: ${testsPassed}/${testsTotal} Passed${' '.repeat(32 - testsPassed.toString().length - testsTotal.toString().length)}║`);
+    const resultsText = `Test Results: ${testsPassed}/${testsTotal} Passed`;
+    const padding = ' '.repeat(Math.max(0, 56 - resultsText.length));
+    console.log(`║  ${resultsText}${padding}║`);
     console.log('╚══════════════════════════════════════════════════════════╝\n');
     
     if (testsPassed === testsTotal) {

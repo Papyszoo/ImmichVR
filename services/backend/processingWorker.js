@@ -11,6 +11,12 @@ const path = require('path');
 const DEFAULT_MODEL_NAME = 'Depth-Anything-V2';
 const DEFAULT_MODEL_VERSION = 'small';
 
+// Video processing configuration
+const ENABLE_EXPERIMENTAL_VIDEO = process.env.ENABLE_EXPERIMENTAL_VIDEO === 'true';
+const VIDEO_FRAME_EXTRACTION_FPS = parseFloat(process.env.VIDEO_FRAME_EXTRACTION_FPS) || 1;
+const VIDEO_MAX_FRAMES = parseInt(process.env.VIDEO_MAX_FRAMES) || 30;
+const VIDEO_FRAME_METHOD = process.env.VIDEO_FRAME_METHOD || 'interval';
+
 // Version-specific filename suffixes
 const VERSION_SUFFIXES = {
   'thumbnail': '_thumb',
@@ -82,6 +88,11 @@ class ProcessingWorker {
       const startTime = Date.now();
 
       try {
+        // Check if this is a video and experimental video processing is disabled
+        if (queueItem.media_type === 'video' && !ENABLE_EXPERIMENTAL_VIDEO) {
+          throw new Error('Video processing is experimental and currently disabled. Set ENABLE_EXPERIMENTAL_VIDEO=true to enable.');
+        }
+
         // Get media item details to check for thumbnail path
         const mediaResult = await this.pool.query(
           'SELECT file_path, thumbnail_path FROM media_items WHERE id = $1',
@@ -98,7 +109,23 @@ class ProcessingWorker {
         const processedVersions = [];
         const processingErrors = [];
 
-        // Process thumbnail version first (smaller, faster)
+        // Handle video processing differently
+        if (queueItem.media_type === 'video') {
+          console.log(`Processing video: ${queueItem.original_filename} [EXPERIMENTAL]`);
+          try {
+            await this.processVideoDepthMap(
+              queueItem.media_item_id,
+              queueItem.original_filename,
+              fullResPath
+            );
+            processedVersions.push('video_frames');
+          } catch (videoError) {
+            console.error(`Failed to process video ${queueItem.original_filename}:`, videoError.message);
+            processingErrors.push(`video: ${videoError.message}`);
+          }
+        } else {
+          // Process photo normally
+          // Process thumbnail version first (smaller, faster)
         if (thumbnailPath) {
           console.log(`Processing thumbnail version for ${queueItem.original_filename}`);
           try {
@@ -143,6 +170,7 @@ class ProcessingWorker {
         } catch (fullResError) {
           console.error(`Failed to process full-resolution for ${queueItem.original_filename}:`, fullResError.message);
           processingErrors.push(`full_resolution: ${fullResError.message}`);
+        }
         }
 
         // If no versions were successfully processed, fail the queue item
@@ -224,6 +252,79 @@ class ProcessingWorker {
          access_count = 0,
          updated_at = NOW()`,
       [mediaItemId, depthMapPath, fileSize, 'png', modelName, modelVersion, versionType]
+    );
+  }
+
+  /**
+   * Process video depth map (experimental)
+   * Extracts frames and generates depth maps for each frame
+   */
+  async processVideoDepthMap(mediaItemId, originalFilename, videoPath) {
+    console.log(`[EXPERIMENTAL] Processing video depth map for ${originalFilename}`);
+    
+    try {
+      // Call AI service to process video and get depth map frames
+      const depthMapsZip = await this.apiGateway.processVideoDepthMap(
+        videoPath,
+        VIDEO_FRAME_EXTRACTION_FPS,
+        VIDEO_MAX_FRAMES,
+        VIDEO_FRAME_METHOD
+      );
+      
+      // Save the ZIP file containing depth map frames
+      const depthMapsDir = process.env.DEPTH_MAPS_DIR || '/data/depth_maps';
+      await fs.mkdir(depthMapsDir, { recursive: true });
+      
+      const baseFilename = path.parse(originalFilename).name;
+      const depthMapZipFilename = `${baseFilename}_${mediaItemId}_video_depth_frames.zip`;
+      const depthMapZipPath = path.join(depthMapsDir, depthMapZipFilename);
+      
+      await fs.writeFile(depthMapZipPath, depthMapsZip);
+      
+      // Store metadata in database with special version_type for videos
+      await this.storeVideoDepthMapMetadata(
+        mediaItemId,
+        depthMapZipPath,
+        depthMapsZip.length
+      );
+      
+      console.log(`[EXPERIMENTAL] Successfully processed video depth map: ${depthMapZipPath}`);
+      
+    } catch (error) {
+      console.error(`[EXPERIMENTAL] Error processing video depth map:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Store video depth map metadata in database
+   */
+  async storeVideoDepthMapMetadata(mediaItemId, depthMapZipPath, fileSize) {
+    const modelName = process.env.AI_MODEL_NAME || DEFAULT_MODEL_NAME;
+    const modelVersion = process.env.AI_MODEL_VERSION || DEFAULT_MODEL_VERSION;
+    
+    const processingParams = {
+      fps: VIDEO_FRAME_EXTRACTION_FPS,
+      max_frames: VIDEO_MAX_FRAMES,
+      method: VIDEO_FRAME_METHOD,
+      format: 'zip_frames',
+      experimental: true
+    };
+    
+    await this.pool.query(
+      `INSERT INTO depth_map_cache 
+       (media_item_id, file_path, file_size, format, width, height, model_name, model_version, version_type, processing_params)
+       VALUES ($1, $2, $3, $4, 0, 0, $5, $6, $7, $8)
+       ON CONFLICT (media_item_id, version_type) 
+       DO UPDATE SET 
+         file_path = EXCLUDED.file_path,
+         file_size = EXCLUDED.file_size,
+         processing_params = EXCLUDED.processing_params,
+         generated_at = NOW(),
+         accessed_at = NOW(),
+         access_count = 0,
+         updated_at = NOW()`,
+      [mediaItemId, depthMapZipPath, fileSize, 'raw', modelName, modelVersion, 'full_resolution', JSON.stringify(processingParams)]
     );
   }
 

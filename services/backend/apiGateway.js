@@ -89,6 +89,52 @@ class APIGateway {
   }
 
   /**
+   * Process video depth map (experimental)
+   * @param {string} videoPath - Path to the video file
+   * @param {number} fps - Frames per second to extract
+   * @param {number} maxFrames - Maximum number of frames to extract
+   * @param {string} method - Extraction method ('interval' or 'keyframes')
+   * @returns {Promise<Buffer>} - ZIP file containing depth map frames
+   */
+  async processVideoDepthMap(videoPath, fps = 1, maxFrames = 30, method = 'interval') {
+    try {
+      // Create form data
+      const formData = new FormData();
+      formData.append('video', fs.createReadStream(videoPath));
+
+      // Send to AI service with query parameters
+      const response = await this.aiClient.post('/api/video/depth', formData, {
+        params: {
+          fps,
+          max_frames: maxFrames,
+          method,
+          output_format: 'zip'
+        },
+        headers: {
+          ...formData.getHeaders()
+        },
+        responseType: 'arraybuffer',
+        timeout: 300000 // 5 minutes for video processing
+      });
+
+      if (response.status !== 200) {
+        throw new Error(`AI service returned status ${response.status}`);
+      }
+
+      return Buffer.from(response.data);
+
+    } catch (error) {
+      if (error.response) {
+        throw new Error(`AI service error: ${error.response.status} - ${error.response.statusText}`);
+      } else if (error.request) {
+        throw new Error('No response from AI service - service may be down');
+      } else {
+        throw new Error(`Request setup error: ${error.message}`);
+      }
+    }
+  }
+
+  /**
    * Route request to AI service (generic proxy)
    */
   async proxyToAIService(path, method = 'GET', data = null, headers = {}) {

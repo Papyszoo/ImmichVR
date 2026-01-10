@@ -138,6 +138,8 @@ For Immich integration documentation, see [IMMICH_CONNECTOR.md](services/backend
 
 For media fetch logic (thumbnails & full-resolution), see [MEDIA_VERSIONS.md](MEDIA_VERSIONS.md).
 
+For experimental video depth map support, see [VIDEO_DEPTH_SUPPORT.md](VIDEO_DEPTH_SUPPORT.md).
+
 ### Frontend (React/Nginx)
 
 - **Container**: `immichvr-frontend`

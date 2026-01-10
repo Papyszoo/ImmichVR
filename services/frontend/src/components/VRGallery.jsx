@@ -1,113 +1,138 @@
 import React, { useState } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { VRButton, XR } from '@react-three/xr';
+import { createXRStore, XR } from '@react-three/xr';
 import { Sky, Environment } from '@react-three/drei';
-import Gallery from './Gallery';
 import DepthViewer3D from './DepthViewer3D';
-import VideoDepthPlayer from './VideoDepthPlayer';
-import PerformanceMonitor from './PerformanceMonitor';
+
+// Create XR store for managing VR sessions
+const xrStore = createXRStore();
+
+// Export store for external access
+if (typeof window !== 'undefined') {
+  window.xrStore = xrStore;
+}
 
 /**
- * VRGallery - Main VR gallery container with XR support
+ * VRGallery - 3D viewer for a single photo with depth effect
  */
-function VRGallery({ media = [], onSelectMedia }) {
-  const [selectedMedia, setSelectedMedia] = useState(null);
-  const [viewerMode, setViewerMode] = useState('gallery'); // 'gallery', 'photo', 'video'
-  const [showPerformance, setShowPerformance] = useState(false);
+function VRGallery({ media = [], selectedMedia, onClose, onNext, onPrevious }) {
+  const currentMedia = selectedMedia || media[0];
 
-  const handleSelectMedia = (mediaItem) => {
-    setSelectedMedia(mediaItem);
-    
-    // Determine viewer mode based on media type
-    if (mediaItem.type === 'video' || mediaItem.type === 'VIDEO') {
-      setViewerMode('video');
-    } else {
-      setViewerMode('photo');
-    }
-    
-    if (onSelectMedia) {
-      onSelectMedia(mediaItem);
-    }
-  };
-
-  const handleCloseViewer = () => {
-    setSelectedMedia(null);
-    setViewerMode('gallery');
-  };
-
-  const handleNext = () => {
-    if (!selectedMedia || media.length === 0) return;
-    
-    const currentIndex = media.findIndex(m => m.id === selectedMedia.id);
-    const nextIndex = (currentIndex + 1) % media.length;
-    handleSelectMedia(media[nextIndex]);
-  };
-
-  const handlePrevious = () => {
-    if (!selectedMedia || media.length === 0) return;
-    
-    const currentIndex = media.findIndex(m => m.id === selectedMedia.id);
-    const previousIndex = (currentIndex - 1 + media.length) % media.length;
-    handleSelectMedia(media[previousIndex]);
-  };
-
-  // Toggle performance monitor with keyboard shortcut (P key)
-  React.useEffect(() => {
-    const handleKeyPress = (e) => {
-      if (e.key === 'p' || e.key === 'P') {
-        setShowPerformance(prev => !prev);
-      }
-    };
-    window.addEventListener('keypress', handleKeyPress);
-    return () => window.removeEventListener('keypress', handleKeyPress);
-  }, []);
+  if (!currentMedia) {
+    return null;
+  }
 
   return (
-    <>
-      <VRButton />
-      <Canvas>
-        <XR>
-          {/* Lighting */}
-          <ambientLight intensity={0.5} />
-          <directionalLight position={[10, 10, 5]} intensity={1} />
-          
-          {/* Environment */}
+    <div style={styles.container}>
+      {/* Back button */}
+      <button onClick={onClose} style={styles.backButton}>
+        ← Back to Gallery
+      </button>
+
+      {/* VR Button */}
+      <button onClick={() => xrStore.enterVR()} style={styles.vrButton}>
+        🥽 Enter VR
+      </button>
+
+      {/* Navigation */}
+      <div style={styles.nav}>
+        <button onClick={onPrevious} style={styles.navButton}>←</button>
+        <span style={styles.filename}>
+          {currentMedia.originalFilename || currentMedia.originalFileName || 'Photo'}
+        </span>
+        <button onClick={onNext} style={styles.navButton}>→</button>
+      </div>
+
+      {/* 3D Canvas */}
+      <Canvas style={styles.canvas}>
+        <XR store={xrStore}>
+          <ambientLight intensity={0.6} />
+          <directionalLight position={[5, 5, 5]} intensity={0.8} />
           <Sky sunPosition={[100, 20, 100]} />
           <Environment preset="sunset" />
           
-          {/* Performance Monitor */}
-          <PerformanceMonitor enabled={showPerformance} />
-          
-          {/* Conditional Rendering based on viewer mode */}
-          {viewerMode === 'gallery' && (
-            <Gallery 
-              media={media} 
-              onSelect={handleSelectMedia}
-              selectedMedia={selectedMedia}
-            />
-          )}
-          
-          {viewerMode === 'photo' && selectedMedia && (
-            <DepthViewer3D
-              media={selectedMedia}
-              onClose={handleCloseViewer}
-              onNext={handleNext}
-              onPrevious={handlePrevious}
-            />
-          )}
-          
-          {viewerMode === 'video' && selectedMedia && (
-            <VideoDepthPlayer
-              media={selectedMedia}
-              onClose={handleCloseViewer}
-              onNext={handleNext}
-              onPrevious={handlePrevious}
-            />
-          )}
+          <DepthViewer3D
+            media={currentMedia}
+            onClose={onClose}
+            onNext={onNext}
+            onPrevious={onPrevious}
+          />
         </XR>
       </Canvas>
-    </>
+    </div>
   );
 }
+
+const styles = {
+  container: {
+    position: 'relative',
+    width: '100vw',
+    height: '100vh',
+    backgroundColor: '#000000',
+  },
+  canvas: {
+    width: '100%',
+    height: '100%',
+  },
+  backButton: {
+    position: 'absolute',
+    top: '16px',
+    left: '16px',
+    zIndex: 100,
+    padding: '10px 16px',
+    fontSize: '14px',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    color: 'white',
+    border: '1px solid rgba(255,255,255,0.2)',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    backdropFilter: 'blur(8px)',
+  },
+  vrButton: {
+    position: 'absolute',
+    top: '16px',
+    right: '16px',
+    zIndex: 100,
+    padding: '10px 16px',
+    fontSize: '14px',
+    backgroundColor: 'rgba(76, 175, 80, 0.9)',
+    color: 'white',
+    border: 'none',
+    borderRadius: '20px',
+    cursor: 'pointer',
+  },
+  nav: {
+    position: 'absolute',
+    bottom: '24px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: 100,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '16px',
+    padding: '8px 16px',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: '24px',
+    backdropFilter: 'blur(8px)',
+  },
+  navButton: {
+    width: '36px',
+    height: '36px',
+    fontSize: '18px',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    color: 'white',
+    border: 'none',
+    borderRadius: '50%',
+    cursor: 'pointer',
+  },
+  filename: {
+    fontSize: '14px',
+    color: 'rgba(255,255,255,0.8)',
+    maxWidth: '200px',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+};
 
 export default VRGallery;

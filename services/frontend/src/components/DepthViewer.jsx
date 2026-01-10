@@ -1,49 +1,64 @@
-import React, { useState, useEffect } from 'react';
-import { useLoader } from '@react-three/fiber';
-import { TextureLoader } from 'three';
-import { Text } from '@react-three/drei';
-import { Interactive } from '@react-three/xr';
+import React, { useState, useEffect, Suspense } from 'react';
+import { Text, useTexture } from '@react-three/drei';
+
+/**
+ * TexturedMesh - Renders a textured plane (needs Suspense boundary)
+ */
+function TexturedMesh({ url, position }) {
+  const texture = useTexture(url);
+  
+  return (
+    <mesh position={position}>
+      <planeGeometry args={[2, 2]} />
+      <meshStandardMaterial map={texture} />
+    </mesh>
+  );
+}
 
 /**
  * DepthViewer - Displays 3D depth map view of selected media
  */
 function DepthViewer({ media, onClose }) {
   const [depthImageUrl, setDepthImageUrl] = useState(null);
-  const [depthInfo, setDepthInfo] = useState(null);
+  const [originalUrl, setOriginalUrl] = useState(null);
+  const [hovered, setHovered] = useState(false);
 
   useEffect(() => {
-    // Load depth map
-    if (media.depthBlob) {
+    // Load depth map URL
+    if (media.depthUrl) {
+      setDepthImageUrl(media.depthUrl);
+    } else if (media.depthBlob) {
       const url = URL.createObjectURL(media.depthBlob);
       setDepthImageUrl(url);
       return () => URL.revokeObjectURL(url);
-    } else if (media.depthUrl) {
-      setDepthImageUrl(media.depthUrl);
     }
   }, [media]);
 
-  // Load textures
-  const depthTexture = depthImageUrl ? useLoader(TextureLoader, depthImageUrl) : null;
-  const originalTexture = media.originalUrl ? useLoader(TextureLoader, media.originalUrl) : null;
+  useEffect(() => {
+    // Load original image URL
+    if (media.originalUrl) {
+      setOriginalUrl(media.originalUrl);
+    } else if (media.thumbnailUrl) {
+      setOriginalUrl(media.thumbnailUrl);
+    }
+  }, [media]);
 
   if (!media) return null;
 
   return (
     <group position={[0, 1.5, -2]}>
       {/* Original Image */}
-      {originalTexture && (
-        <mesh position={[-1.5, 0, 0]}>
-          <planeGeometry args={[2, 2]} />
-          <meshStandardMaterial map={originalTexture} />
-        </mesh>
+      {originalUrl && (
+        <Suspense fallback={null}>
+          <TexturedMesh url={originalUrl} position={[-1.5, 0, 0]} />
+        </Suspense>
       )}
       
       {/* Depth Map */}
-      {depthTexture && (
-        <mesh position={[1.5, 0, 0]}>
-          <planeGeometry args={[2, 2]} />
-          <meshStandardMaterial map={depthTexture} />
-        </mesh>
+      {depthImageUrl && (
+        <Suspense fallback={null}>
+          <TexturedMesh url={depthImageUrl} position={[1.5, 0, 0]} />
+        </Suspense>
       )}
       
       {/* Labels */}
@@ -66,23 +81,26 @@ function DepthViewer({ media, onClose }) {
       </Text>
       
       {/* Close Button */}
-      <Interactive onSelect={onClose}>
-        <group position={[0, 1.5, 0]}>
-          <mesh>
-            <boxGeometry args={[0.5, 0.3, 0.1]} />
-            <meshStandardMaterial color="#ff3333" />
-          </mesh>
-          <Text
-            position={[0, 0, 0.06]}
-            fontSize={0.15}
-            color="white"
-            anchorX="center"
-            anchorY="middle"
-          >
-            Close
-          </Text>
-        </group>
-      </Interactive>
+      <group 
+        position={[0, 1.5, 0]}
+        onClick={onClose}
+        onPointerEnter={() => setHovered(true)}
+        onPointerLeave={() => setHovered(false)}
+      >
+        <mesh>
+          <boxGeometry args={[0.5, 0.3, 0.1]} />
+          <meshStandardMaterial color={hovered ? '#ff6666' : '#ff3333'} />
+        </mesh>
+        <Text
+          position={[0, 0, 0.06]}
+          fontSize={0.15}
+          color="white"
+          anchorX="center"
+          anchorY="middle"
+        >
+          Close
+        </Text>
+      </group>
     </group>
   );
 }

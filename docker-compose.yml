@@ -57,6 +57,8 @@ services:
       UPLOAD_DIR: /data/uploads
       DEPTH_MAPS_DIR: /data/depth_maps
       AUTO_START_WORKER: ${AUTO_START_WORKER:-true}
+      IMMICH_URL: ${IMMICH_URL}
+      IMMICH_API_KEY: ${IMMICH_API_KEY}
     volumes:
       - media_uploads:/data/uploads
       - depth_maps:/data/depth_maps
@@ -74,20 +76,35 @@ services:
       retries: 3
       start_period: 10s
 
-  # React Frontend
+  # React Frontend (internal only, accessed via nginx)
   frontend:
     build:
       context: ./services/frontend
       dockerfile: Dockerfile
     container_name: immichvr-frontend
     restart: unless-stopped
-    ports:
-      - "${APP_PORT:-21370}:80"
     networks:
       - immichvr-network
     depends_on:
       - backend
       - ai
+
+  # Nginx HTTPS Proxy (main entry point)
+  nginx:
+    build:
+      context: ./services/nginx
+      dockerfile: Dockerfile
+    container_name: immichvr-nginx
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-21370}:443"
+    volumes:
+      - ssl_certs:/etc/nginx/ssl
+    networks:
+      - immichvr-network
+    depends_on:
+      - frontend
+      - backend
 
 networks:
   immichvr-network:
@@ -97,3 +114,4 @@ volumes:
   postgres_data:
   media_uploads:
   depth_maps:
+  ssl_certs:

@@ -1,93 +1,86 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useLoader, useFrame } from '@react-three/fiber';
-import { TextureLoader } from 'three';
+import React, { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import * as THREE from 'three';
-import { Text } from '@react-three/drei';
-import { Interactive, useXR } from '@react-three/xr';
+import { useFrame } from '@react-three/fiber';
+import { Text, useTexture } from '@react-three/drei';
 
 /**
- * DepthViewer3D - Displays immersive 3D depth map view with displacement effect
- * Supports both photo and video frame depth maps
+ * DepthMesh - Renders the depth-displaced image
+ */
+function DepthMesh({ imageUrl, depthUrl, meshRef }) {
+  const [imageTexture, depthTexture] = useTexture([imageUrl, depthUrl]);
+  
+  const geometry = useMemo(() => {
+    return new THREE.PlaneGeometry(4, 3, 64, 64);
+  }, []);
+
+  return (
+    <mesh ref={meshRef} geometry={geometry}>
+      <meshStandardMaterial
+        map={imageTexture}
+        displacementMap={depthTexture}
+        displacementScale={0.5}
+        displacementBias={-0.25}
+        side={THREE.DoubleSide}
+      />
+    </mesh>
+  );
+}
+
+/**
+ * ImageOnlyMesh - Shows image without depth
+ */
+function ImageOnlyMesh({ imageUrl, meshRef }) {
+  const texture = useTexture(imageUrl);
+  
+  return (
+    <mesh ref={meshRef}>
+      <planeGeometry args={[4, 3]} />
+      <meshStandardMaterial map={texture} side={THREE.DoubleSide} />
+    </mesh>
+  );
+}
+
+/**
+ * DepthViewer3D - Minimal immersive 3D photo viewer
  */
 function DepthViewer3D({ media, onClose, onNext, onPrevious }) {
   const [imageUrl, setImageUrl] = useState(null);
   const [depthUrl, setDepthUrl] = useState(null);
-  const [zoomLevel, setZoomLevel] = useState(1.0);
-  const [rotationY, setRotationY] = useState(0);
-  const [loading, setLoading] = useState(true);
   const meshRef = useRef();
-  const { isPresenting } = useXR();
 
-  // Load image and depth map
   useEffect(() => {
-    setLoading(true);
-    
-    // Load original image
-    if (media.thumbnailBlob) {
-      const url = URL.createObjectURL(media.thumbnailBlob);
-      setImageUrl(url);
-      return () => URL.revokeObjectURL(url);
-    } else if (media.thumbnailUrl) {
+    if (media.thumbnailUrl) {
       setImageUrl(media.thumbnailUrl);
     } else if (media.originalUrl) {
       setImageUrl(media.originalUrl);
+    } else if (media.thumbnailBlob) {
+      const url = URL.createObjectURL(media.thumbnailBlob);
+      setImageUrl(url);
+      return () => URL.revokeObjectURL(url);
     }
-    
-    // Load depth map
-    if (media.depthBlob) {
+  }, [media]);
+
+  useEffect(() => {
+    if (media.depthUrl) {
+      setDepthUrl(media.depthUrl);
+    } else if (media.depthBlob) {
       const url = URL.createObjectURL(media.depthBlob);
       setDepthUrl(url);
       return () => URL.revokeObjectURL(url);
-    } else if (media.depthUrl) {
-      setDepthUrl(media.depthUrl);
     }
-    
-    setLoading(false);
   }, [media]);
 
-  // Load textures
-  const imageTexture = imageUrl ? useLoader(TextureLoader, imageUrl) : null;
-  const depthTexture = depthUrl ? useLoader(TextureLoader, depthUrl) : null;
-
-  // Create displacement-mapped geometry
-  const geometry = useMemo(() => {
-    // Higher resolution for better depth effect (64x64 segments)
-    return new THREE.PlaneGeometry(3, 3, 64, 64);
-  }, []);
-
-  // Animate rotation slightly for depth perception
-  useFrame((state, delta) => {
-    if (meshRef.current && isPresenting) {
-      // Subtle idle animation
-      meshRef.current.rotation.y = rotationY + Math.sin(state.clock.elapsedTime * 0.2) * 0.02;
+  // Gentle rotation animation
+  useFrame((state) => {
+    if (meshRef.current) {
+      meshRef.current.rotation.y = Math.sin(state.clock.elapsedTime * 0.15) * 0.03;
     }
   });
 
-  const handleZoomIn = () => {
-    setZoomLevel(prev => Math.min(prev + 0.2, 2.0));
-  };
-
-  const handleZoomOut = () => {
-    setZoomLevel(prev => Math.max(prev - 0.2, 0.5));
-  };
-
-  const handleRotateLeft = () => {
-    setRotationY(prev => prev + 0.3);
-  };
-
-  const handleRotateRight = () => {
-    setRotationY(prev => prev - 0.3);
-  };
-
-  if (!media || loading) {
+  if (!imageUrl) {
     return (
       <group position={[0, 1.5, -2]}>
-        <Text
-          position={[0, 0, 0]}
-          fontSize={0.2}
-          color="white"
-          anchorX="center"
-        >
+        <Text position={[0, 0, 0]} fontSize={0.2} color="white" anchorX="center">
           Loading...
         </Text>
       </group>
@@ -95,196 +88,50 @@ function DepthViewer3D({ media, onClose, onNext, onPrevious }) {
   }
 
   return (
-    <group position={[0, 1.5, -3]}>
-      {/* Main 3D Depth View */}
-      {imageTexture && depthTexture && (
-        <mesh
-          ref={meshRef}
-          geometry={geometry}
-          scale={[zoomLevel, zoomLevel, zoomLevel]}
-          rotation={[0, rotationY, 0]}
-        >
-          <meshStandardMaterial
-            map={imageTexture}
-            displacementMap={depthTexture}
-            displacementScale={0.5}
-            displacementBias={-0.25}
-            side={THREE.DoubleSide}
-          />
-        </mesh>
-      )}
+    <group position={[0, 1.6, -3]}>
+      {/* Photo */}
+      <Suspense fallback={
+        <Text position={[0, 0, 0]} fontSize={0.2} color="white" anchorX="center">
+          Loading...
+        </Text>
+      }>
+        {depthUrl ? (
+          <DepthMesh imageUrl={imageUrl} depthUrl={depthUrl} meshRef={meshRef} />
+        ) : (
+          <ImageOnlyMesh imageUrl={imageUrl} meshRef={meshRef} />
+        )}
+      </Suspense>
 
-      {/* Control Panel - Bottom */}
-      <group position={[0, -2.2, 0]}>
-        {/* Zoom Controls */}
-        <group position={[-2, 0, 0]}>
-          <Interactive onSelect={handleZoomIn}>
-            <group>
-              <mesh>
-                <boxGeometry args={[0.4, 0.3, 0.1]} />
-                <meshStandardMaterial color="#4CAF50" />
-              </mesh>
-              <Text
-                position={[0, 0, 0.06]}
-                fontSize={0.15}
-                color="white"
-                anchorX="center"
-                anchorY="middle"
-              >
-                Zoom +
-              </Text>
-            </group>
-          </Interactive>
-        </group>
-
-        <group position={[-1.2, 0, 0]}>
-          <Interactive onSelect={handleZoomOut}>
-            <group>
-              <mesh>
-                <boxGeometry args={[0.4, 0.3, 0.1]} />
-                <meshStandardMaterial color="#4CAF50" />
-              </mesh>
-              <Text
-                position={[0, 0, 0.06]}
-                fontSize={0.15}
-                color="white"
-                anchorX="center"
-                anchorY="middle"
-              >
-                Zoom -
-              </Text>
-            </group>
-          </Interactive>
-        </group>
-
-        {/* Rotation Controls */}
-        <group position={[-0.4, 0, 0]}>
-          <Interactive onSelect={handleRotateLeft}>
-            <group>
-              <mesh>
-                <boxGeometry args={[0.4, 0.3, 0.1]} />
-                <meshStandardMaterial color="#2196F3" />
-              </mesh>
-              <Text
-                position={[0, 0, 0.06]}
-                fontSize={0.15}
-                color="white"
-                anchorX="center"
-                anchorY="middle"
-              >
-                ◄
-              </Text>
-            </group>
-          </Interactive>
-        </group>
-
-        <group position={[0.4, 0, 0]}>
-          <Interactive onSelect={handleRotateRight}>
-            <group>
-              <mesh>
-                <boxGeometry args={[0.4, 0.3, 0.1]} />
-                <meshStandardMaterial color="#2196F3" />
-              </mesh>
-              <Text
-                position={[0, 0, 0.06]}
-                fontSize={0.15}
-                color="white"
-                anchorX="center"
-                anchorY="middle"
-              >
-                ►
-              </Text>
-            </group>
-          </Interactive>
-        </group>
-
-        {/* Navigation Controls */}
+      {/* Minimal nav: just prev/next/close */}
+      <group position={[0, -2, 0]}>
         {onPrevious && (
-          <group position={[1.2, 0, 0]}>
-            <Interactive onSelect={onPrevious}>
-              <group>
-                <mesh>
-                  <boxGeometry args={[0.4, 0.3, 0.1]} />
-                  <meshStandardMaterial color="#FF9800" />
-                </mesh>
-                <Text
-                  position={[0, 0, 0.06]}
-                  fontSize={0.12}
-                  color="white"
-                  anchorX="center"
-                  anchorY="middle"
-                >
-                  Prev
-                </Text>
-              </group>
-            </Interactive>
-          </group>
+          <mesh position={[-1, 0, 0]} onClick={onPrevious}>
+            <circleGeometry args={[0.15, 32]} />
+            <meshBasicMaterial color="#ffffff" transparent opacity={0.3} />
+          </mesh>
         )}
-
         {onNext && (
-          <group position={[2, 0, 0]}>
-            <Interactive onSelect={onNext}>
-              <group>
-                <mesh>
-                  <boxGeometry args={[0.4, 0.3, 0.1]} />
-                  <meshStandardMaterial color="#FF9800" />
-                </mesh>
-                <Text
-                  position={[0, 0, 0.06]}
-                  fontSize={0.12}
-                  color="white"
-                  anchorX="center"
-                  anchorY="middle"
-                >
-                  Next
-                </Text>
-              </group>
-            </Interactive>
-          </group>
+          <mesh position={[1, 0, 0]} onClick={onNext}>
+            <circleGeometry args={[0.15, 32]} />
+            <meshBasicMaterial color="#ffffff" transparent opacity={0.3} />
+          </mesh>
         )}
       </group>
 
-      {/* Close Button - Top Right */}
-      <group position={[2.5, 2, 0]}>
-        <Interactive onSelect={onClose}>
-          <group>
-            <mesh>
-              <boxGeometry args={[0.5, 0.3, 0.1]} />
-              <meshStandardMaterial color="#ff3333" />
-            </mesh>
-            <Text
-              position={[0, 0, 0.06]}
-              fontSize={0.15}
-              color="white"
-              anchorX="center"
-              anchorY="middle"
-            >
-              Close
-            </Text>
-          </group>
-        </Interactive>
-      </group>
+      {/* Close - subtle top corner */}
+      <mesh position={[2.2, 1.8, 0]} onClick={onClose}>
+        <circleGeometry args={[0.12, 32]} />
+        <meshBasicMaterial color="#ff4444" transparent opacity={0.6} />
+      </mesh>
 
-      {/* Media Info */}
+      {/* Filename */}
       <Text
-        position={[0, 2.2, 0]}
-        fontSize={0.15}
-        color="white"
-        anchorX="center"
-        anchorY="middle"
-      >
-        {media.originalFilename || media.original_filename || 'Media Item'}
-      </Text>
-
-      {/* Zoom Level Indicator */}
-      <Text
-        position={[0, -2.7, 0]}
+        position={[0, 2, 0]}
         fontSize={0.12}
-        color="#aaaaaa"
+        color="#888888"
         anchorX="center"
-        anchorY="middle"
       >
-        Zoom: {(zoomLevel * 100).toFixed(0)}%
+        {media.originalFilename || media.original_filename || ''}
       </Text>
     </group>
   );

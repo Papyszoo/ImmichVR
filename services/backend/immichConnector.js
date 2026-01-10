@@ -37,8 +37,9 @@ class ImmichConnector {
     this.baseUrl = this.baseUrl.replace(/\/$/, '');
 
     // Create axios instance with default configuration
+    // The Immich API endpoints are relative to /api
     this.client = axios.create({
-      baseURL: this.baseUrl,
+      baseURL: `${this.baseUrl}/api`,
       headers: {
         'x-api-key': this.apiKey,
         'Accept': 'application/json',
@@ -94,7 +95,8 @@ class ImmichConnector {
    */
   async testConnection() {
     try {
-      const response = await this.client.get('/api/server-info/ping');
+      // Immich v2 uses /server/ping instead of /api/server-info/ping
+      const response = await this.client.get('/server/ping');
       return {
         connected: true,
         response: response.data,
@@ -110,7 +112,8 @@ class ImmichConnector {
    */
   async getServerVersion() {
     try {
-      const response = await this.client.get('/api/server-info/version');
+      // Immich v2 uses /server/version instead of /api/server-info/version
+      const response = await this.client.get('/server/version');
       return response.data;
     } catch (error) {
       throw new Error(`Failed to get server version: ${error.message}`);
@@ -124,27 +127,33 @@ class ImmichConnector {
    * @param {number} options.page - Page number (default: 0)
    * @param {boolean} options.isFavorite - Filter by favorite status
    * @param {boolean} options.isArchived - Filter by archived status (default: false)
+   * @param {string} options.type - Asset type filter ('IMAGE', 'VIDEO', or undefined for all)
    * @returns {Promise<Array>} Array of asset metadata
    */
   async getAssets(options = {}) {
     try {
-      const params = {
+      // Immich v2.0+ uses POST /search/metadata instead of GET /api/asset
+      const searchData = {
         size: options.size || 1000,
-        page: options.page || 0,
+        page: options.page || 1, // v2 API uses 1-based pagination
       };
 
       // Add optional filters
       if (options.isFavorite !== undefined) {
-        params.isFavorite = options.isFavorite;
+        searchData.isFavorite = options.isFavorite;
       }
       if (options.isArchived !== undefined) {
-        params.isArchived = options.isArchived;
+        searchData.isArchived = options.isArchived;
       } else {
-        params.isArchived = false; // Default to non-archived
+        searchData.isArchived = false; // Default to non-archived
+      }
+      if (options.type) {
+        searchData.type = options.type;
       }
 
-      const response = await this.client.get('/api/asset', { params });
-      return response.data;
+      const response = await this.client.post('/search/metadata', searchData);
+      // v2 API returns { assets: { items: [...], total: n, count: n } }
+      return response.data.assets?.items || [];
     } catch (error) {
       throw new Error(`Failed to fetch assets: ${error.message}`);
     }
@@ -157,7 +166,8 @@ class ImmichConnector {
    */
   async getAssetInfo(assetId) {
     try {
-      const response = await this.client.get(`/api/asset/assetById/${assetId}`);
+      // Immich v2 uses /assets/:id instead of /api/asset/assetById/:id
+      const response = await this.client.get(`/assets/${assetId}`);
       return response.data;
     } catch (error) {
       throw new Error(`Failed to fetch asset info for ${assetId}: ${error.message}`);
@@ -179,7 +189,8 @@ class ImmichConnector {
         size: options.size || 'preview',
       };
 
-      const response = await this.client.get(`/api/asset/thumbnail/${assetId}`, {
+      // Immich v2 uses /assets/:id/thumbnail instead of /api/asset/thumbnail/:id
+      const response = await this.client.get(`/assets/${assetId}/thumbnail`, {
         params,
         responseType: 'arraybuffer',
       });
@@ -197,7 +208,8 @@ class ImmichConnector {
    */
   async getFullResolutionFile(assetId) {
     try {
-      const response = await this.client.get(`/api/asset/file/${assetId}`, {
+      // Immich v2 uses /assets/:id/original instead of /api/asset/file/:id
+      const response = await this.client.get(`/assets/${assetId}/original`, {
         responseType: 'arraybuffer',
       });
 
@@ -214,7 +226,8 @@ class ImmichConnector {
    */
   async streamFullResolutionFile(assetId) {
     try {
-      const response = await this.client.get(`/api/asset/file/${assetId}`, {
+      // Immich v2 uses /assets/:id/original instead of /api/asset/file/:id
+      const response = await this.client.get(`/assets/${assetId}/original`, {
         responseType: 'stream',
       });
 
@@ -230,7 +243,8 @@ class ImmichConnector {
    */
   async getAssetStatistics() {
     try {
-      const response = await this.client.get('/api/asset/statistics');
+      // Immich v2 uses /search/statistics instead of /api/asset/statistics
+      const response = await this.client.post('/search/statistics', {});
       return response.data;
     } catch (error) {
       throw new Error(`Failed to fetch asset statistics: ${error.message}`);

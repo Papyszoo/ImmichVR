@@ -550,6 +550,7 @@ app.get('/api/immich/photos', requireImmichConnector, async (req, res) => {
       data: photos,
     });
   } catch (error) {
+    console.error('Error fetching photos:', error);
     res.status(500).json({
       error: 'Failed to fetch photos',
       message: error.message,
@@ -597,6 +598,7 @@ app.get('/api/immich/assets/:assetId', requireImmichConnector, async (req, res) 
 
 // Get asset thumbnail
 app.get('/api/immich/assets/:assetId/thumbnail', requireImmichConnector, async (req, res) => {
+  console.log(`Fetching thumbnail for asset: ${req.params.assetId}`);
   try {
     const options = {
       format: req.query.format || 'JPEG',
@@ -610,6 +612,7 @@ app.get('/api/immich/assets/:assetId/thumbnail', requireImmichConnector, async (
     res.setHeader('Content-Type', contentType);
     res.send(thumbnail);
   } catch (error) {
+    console.error(`Error fetching thumbnail for ${req.params.assetId}:`, error);
     res.status(500).json({
       error: 'Failed to fetch thumbnail',
       message: error.message,

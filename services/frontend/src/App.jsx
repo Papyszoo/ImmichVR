@@ -3,6 +3,9 @@ import VRGallery from './components/VRGallery';
 import FallbackGallery from './components/FallbackGallery';
 import { getMediaStatus, getMediaDepth, getImmichPhotos, getImmichThumbnail } from './services/api';
 
+// Configuration constants
+const MAX_ASSETS_TO_LOAD = 20;
+
 function App() {
   const [media, setMedia] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -21,6 +24,18 @@ function App() {
 
     // Load media from backend
     loadMedia();
+    
+    // Cleanup function to revoke object URLs
+    return () => {
+      media.forEach(item => {
+        if (item.thumbnailUrl && item.thumbnailUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(item.thumbnailUrl);
+        }
+        if (item.depthUrl && item.depthUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(item.depthUrl);
+        }
+      });
+    };
   }, []);
 
   const loadMedia = async () => {
@@ -37,7 +52,7 @@ function App() {
         if (immichResponse.assets && immichResponse.assets.length > 0) {
           // Load thumbnails for Immich assets
           mediaItems = await Promise.all(
-            immichResponse.assets.slice(0, 20).map(async (asset) => {
+            immichResponse.assets.slice(0, MAX_ASSETS_TO_LOAD).map(async (asset) => {
               try {
                 const thumbnailBlob = await getImmichThumbnail(asset.id);
                 const thumbnailUrl = URL.createObjectURL(thumbnailBlob);
@@ -69,7 +84,7 @@ function App() {
           mediaItems = await Promise.all(
             statusResponse.media
               .filter(item => item.status === 'completed')
-              .slice(0, 20)
+              .slice(0, MAX_ASSETS_TO_LOAD)
               .map(async (item) => {
                 try {
                   const depthBlob = await getMediaDepth(item.id);

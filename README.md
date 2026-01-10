@@ -145,6 +145,13 @@ For experimental video depth map support, see [VIDEO_DEPTH_SUPPORT.md](VIDEO_DEP
 - **Container**: `immichvr-frontend`
 - **Build Context**: `./services/frontend`
 - **External Port**: `${APP_PORT:-21370}`
+- **Features**: 
+  - WebXR VR Gallery with React Three Fiber
+  - 3D depth map viewer
+  - Responsive fallback for non-VR browsers
+  - API integration with backend
+
+For VR gallery documentation, see [services/frontend/VR_GALLERY.md](services/frontend/VR_GALLERY.md).
 
 ## License
 

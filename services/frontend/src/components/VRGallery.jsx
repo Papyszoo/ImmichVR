@@ -3,18 +3,50 @@ import { Canvas } from '@react-three/fiber';
 import { VRButton, XR } from '@react-three/xr';
 import { Sky, Environment } from '@react-three/drei';
 import Gallery from './Gallery';
+import DepthViewer3D from './DepthViewer3D';
+import VideoDepthPlayer from './VideoDepthPlayer';
 
 /**
  * VRGallery - Main VR gallery container with XR support
  */
 function VRGallery({ media = [], onSelectMedia }) {
   const [selectedMedia, setSelectedMedia] = useState(null);
+  const [viewerMode, setViewerMode] = useState('gallery'); // 'gallery', 'photo', 'video'
 
   const handleSelectMedia = (mediaItem) => {
     setSelectedMedia(mediaItem);
+    
+    // Determine viewer mode based on media type
+    if (mediaItem.type === 'video' || mediaItem.type === 'VIDEO') {
+      setViewerMode('video');
+    } else {
+      setViewerMode('photo');
+    }
+    
     if (onSelectMedia) {
       onSelectMedia(mediaItem);
     }
+  };
+
+  const handleCloseViewer = () => {
+    setSelectedMedia(null);
+    setViewerMode('gallery');
+  };
+
+  const handleNext = () => {
+    if (!selectedMedia || media.length === 0) return;
+    
+    const currentIndex = media.findIndex(m => m.id === selectedMedia.id);
+    const nextIndex = (currentIndex + 1) % media.length;
+    handleSelectMedia(media[nextIndex]);
+  };
+
+  const handlePrevious = () => {
+    if (!selectedMedia || media.length === 0) return;
+    
+    const currentIndex = media.findIndex(m => m.id === selectedMedia.id);
+    const previousIndex = (currentIndex - 1 + media.length) % media.length;
+    handleSelectMedia(media[previousIndex]);
   };
 
   return (
@@ -30,12 +62,32 @@ function VRGallery({ media = [], onSelectMedia }) {
           <Sky sunPosition={[100, 20, 100]} />
           <Environment preset="sunset" />
           
-          {/* Gallery Content */}
-          <Gallery 
-            media={media} 
-            onSelect={handleSelectMedia}
-            selectedMedia={selectedMedia}
-          />
+          {/* Conditional Rendering based on viewer mode */}
+          {viewerMode === 'gallery' && (
+            <Gallery 
+              media={media} 
+              onSelect={handleSelectMedia}
+              selectedMedia={selectedMedia}
+            />
+          )}
+          
+          {viewerMode === 'photo' && selectedMedia && (
+            <DepthViewer3D
+              media={selectedMedia}
+              onClose={handleCloseViewer}
+              onNext={handleNext}
+              onPrevious={handlePrevious}
+            />
+          )}
+          
+          {viewerMode === 'video' && selectedMedia && (
+            <VideoDepthPlayer
+              media={selectedMedia}
+              onClose={handleCloseViewer}
+              onNext={handleNext}
+              onPrevious={handlePrevious}
+            />
+          )}
         </XR>
       </Canvas>
     </>

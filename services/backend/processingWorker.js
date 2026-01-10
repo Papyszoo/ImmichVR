@@ -17,6 +17,10 @@ const VIDEO_FRAME_EXTRACTION_FPS = parseFloat(process.env.VIDEO_FRAME_EXTRACTION
 const VIDEO_MAX_FRAMES = parseInt(process.env.VIDEO_MAX_FRAMES) || 30;
 const VIDEO_FRAME_METHOD = process.env.VIDEO_FRAME_METHOD || 'interval';
 
+// Video SBS processing configuration
+const VIDEO_SBS_DIVERGENCE = parseFloat(process.env.VIDEO_SBS_DIVERGENCE) || 2.0;
+const VIDEO_SBS_FORMAT = process.env.VIDEO_SBS_FORMAT || 'SBS_FULL';
+
 // Version-specific filename suffixes
 const VERSION_SUFFIXES = {
   'thumbnail': '_thumb',
@@ -111,17 +115,17 @@ class ProcessingWorker {
 
         // Handle video processing differently
         if (queueItem.media_type === 'video') {
-          console.log(`Processing video: ${queueItem.original_filename} [EXPERIMENTAL]`);
+          console.log(`Processing video to SBS: ${queueItem.original_filename} [EXPERIMENTAL]`);
           try {
-            await this.processVideoDepthMap(
+            await this.processVideoSBS(
               queueItem.media_item_id,
               queueItem.original_filename,
               fullResPath
             );
-            processedVersions.push('video_frames');
+            processedVersions.push('sbs_video');
           } catch (videoError) {
-            console.error(`Failed to process video ${queueItem.original_filename}:`, videoError.message);
-            processingErrors.push(`video: ${videoError.message}`);
+            console.error(`Failed to process video SBS ${queueItem.original_filename}:`, videoError.message);
+            processingErrors.push(`video_sbs: ${videoError.message}`);
           }
         } else {
           // Process photo normally
@@ -297,6 +301,49 @@ class ProcessingWorker {
   }
 
   /**
+   * Process video to Side-by-Side 3D format (experimental)
+   * Generates a complete SBS video file for VR playback
+   */
+  async processVideoSBS(mediaItemId, originalFilename, videoPath) {
+    console.log(`[EXPERIMENTAL] Processing video to SBS for ${originalFilename}`);
+    console.log(`  Divergence: ${VIDEO_SBS_DIVERGENCE}, Format: ${VIDEO_SBS_FORMAT}`);
+    
+    try {
+      // Call AI service to process video and generate SBS output
+      const sbsVideoBuffer = await this.apiGateway.processVideoSBS(
+        videoPath,
+        VIDEO_SBS_DIVERGENCE,
+        VIDEO_SBS_FORMAT,
+        'h264',  // codec
+        10       // batch_size
+      );
+      
+      // Save the SBS video file
+      const depthMapsDir = process.env.DEPTH_MAPS_DIR || '/data/depth_maps';
+      await fs.mkdir(depthMapsDir, { recursive: true });
+      
+      const baseFilename = path.parse(originalFilename).name;
+      const sbsVideoFilename = `${baseFilename}_${mediaItemId}_sbs.mp4`;
+      const sbsVideoPath = path.join(depthMapsDir, sbsVideoFilename);
+      
+      await fs.writeFile(sbsVideoPath, sbsVideoBuffer);
+      
+      // Store metadata in database
+      await this.storeVideoSBSMetadata(
+        mediaItemId,
+        sbsVideoPath,
+        sbsVideoBuffer.length
+      );
+      
+      console.log(`[EXPERIMENTAL] Successfully created SBS video: ${sbsVideoPath}`);
+      
+    } catch (error) {
+      console.error(`[EXPERIMENTAL] Error processing video to SBS:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Store video depth map metadata in database
    */
   async storeVideoDepthMapMetadata(mediaItemId, depthMapZipPath, fileSize) {
@@ -325,6 +372,38 @@ class ProcessingWorker {
          access_count = 0,
          updated_at = NOW()`,
       [mediaItemId, depthMapZipPath, fileSize, 'raw', modelName, modelVersion, 'full_resolution', JSON.stringify(processingParams)]
+    );
+  }
+
+  /**
+   * Store video SBS metadata in database
+   */
+  async storeVideoSBSMetadata(mediaItemId, sbsVideoPath, fileSize) {
+    const modelName = process.env.AI_MODEL_NAME || DEFAULT_MODEL_NAME;
+    const modelVersion = process.env.AI_MODEL_VERSION || DEFAULT_MODEL_VERSION;
+    
+    const processingParams = {
+      divergence: VIDEO_SBS_DIVERGENCE,
+      sbs_format: VIDEO_SBS_FORMAT,
+      output_type: 'sbs_video',
+      codec: 'h264',
+      experimental: true
+    };
+    
+    await this.pool.query(
+      `INSERT INTO depth_map_cache 
+       (media_item_id, file_path, file_size, format, width, height, model_name, model_version, version_type, processing_params)
+       VALUES ($1, $2, $3, $4, 0, 0, $5, $6, $7, $8)
+       ON CONFLICT (media_item_id, version_type) 
+       DO UPDATE SET 
+         file_path = EXCLUDED.file_path,
+         file_size = EXCLUDED.file_size,
+         processing_params = EXCLUDED.processing_params,
+         generated_at = NOW(),
+         accessed_at = NOW(),
+         access_count = 0,
+         updated_at = NOW()`,
+      [mediaItemId, sbsVideoPath, fileSize, 'raw', modelName, modelVersion, 'full_resolution', JSON.stringify(processingParams)]
     );
   }
 

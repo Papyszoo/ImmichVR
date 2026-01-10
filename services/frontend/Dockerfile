@@ -2,14 +2,14 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package file first for caching
-COPY package.json ./
-RUN npm install
+# Copy package files for caching
+COPY package*.json ./
+RUN npm ci
 
 # Copy application code
 COPY . .
 
-# Build the React app
+# Build the React app with Vite
 RUN npm run build
 
 # Production stage

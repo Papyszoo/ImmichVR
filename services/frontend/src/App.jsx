@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import VRGallery from './components/VRGallery';
 import FallbackGallery from './components/FallbackGallery';
-import { getMediaStatus, getMediaDepth, getImmichPhotos, getImmichThumbnail } from './services/api';
+import { getMediaStatus, getMediaDepth, getMediaDepthInfo, getImmichPhotos, getImmichThumbnail, getImmichFile } from './services/api';
 
 // Configuration constants
 const MAX_ASSETS_TO_LOAD = 20;
@@ -56,11 +56,24 @@ function App() {
               try {
                 const thumbnailBlob = await getImmichThumbnail(asset.id);
                 const thumbnailUrl = URL.createObjectURL(thumbnailBlob);
+                
+                // Also try to load the original file for depth viewing
+                let originalBlob = null;
+                let originalUrl = null;
+                try {
+                  originalBlob = await getImmichFile(asset.id);
+                  originalUrl = URL.createObjectURL(originalBlob);
+                } catch (origErr) {
+                  console.log(`Could not load original file for ${asset.id}, will use thumbnail`);
+                }
+                
                 return {
                   id: asset.id,
                   originalFilename: asset.originalFileName,
                   thumbnailUrl,
                   thumbnailBlob,
+                  originalUrl,
+                  originalBlob,
                   type: asset.type,
                   isImmich: true,
                 };
@@ -89,12 +102,24 @@ function App() {
                 try {
                   const depthBlob = await getMediaDepth(item.id);
                   const depthUrl = URL.createObjectURL(depthBlob);
+                  
+                  // Try to get depth info for metadata
+                  let metadata = null;
+                  try {
+                    const depthInfo = await getMediaDepthInfo(item.id);
+                    metadata = depthInfo;
+                  } catch (metaErr) {
+                    console.log(`No metadata available for ${item.id}`);
+                  }
+                  
                   return {
                     id: item.id,
                     originalFilename: item.original_filename,
                     depthUrl,
                     depthBlob,
                     status: item.status,
+                    type: item.media_type,
+                    metadata,
                     isImmich: false,
                   };
                 } catch (err) {
@@ -104,6 +129,7 @@ function App() {
                     id: item.id,
                     originalFilename: item.original_filename,
                     status: item.status,
+                    type: item.media_type,
                     isImmich: false,
                   };
                 }

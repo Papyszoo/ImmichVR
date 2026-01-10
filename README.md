@@ -136,6 +136,8 @@ docker compose exec <service-name> sh
 
 For Immich integration documentation, see [IMMICH_CONNECTOR.md](services/backend/IMMICH_CONNECTOR.md).
 
+For media fetch logic (thumbnails & full-resolution), see [MEDIA_VERSIONS.md](MEDIA_VERSIONS.md).
+
 ### Frontend (React/Nginx)
 
 - **Container**: `immichvr-frontend`

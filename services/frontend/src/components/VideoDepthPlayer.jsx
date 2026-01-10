@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { Text } from '@react-three/drei';
 import { Interactive, useXR } from '@react-three/xr';
 import JSZip from 'jszip';
+import { getMediaDepth } from '../services/api';
 
 /**
  * VideoDepthPlayer - Displays video frames with depth maps in VR
@@ -20,6 +21,7 @@ function VideoDepthPlayer({ media, onClose, onNext, onPrevious }) {
   const [fps, setFps] = useState(1); // Default 1 fps
   const meshRef = useRef();
   const playIntervalRef = useRef(null);
+  const framesRef = useRef([]); // Store frames for cleanup
   const { isPresenting } = useXR();
 
   // Extract frames from ZIP file
@@ -54,6 +56,7 @@ function VideoDepthPlayer({ media, onClose, onNext, onPrevious }) {
 
         const extractedFrames = await Promise.all(framePromises);
         setFrames(extractedFrames);
+        framesRef.current = extractedFrames; // Store in ref for cleanup
         
         // Get FPS from metadata if available
         if (media.metadata && media.metadata.fps) {
@@ -71,7 +74,8 @@ function VideoDepthPlayer({ media, onClose, onNext, onPrevious }) {
 
     // Cleanup
     return () => {
-      frames.forEach(frame => {
+      // Clean up frame URLs from ref
+      framesRef.current.forEach(frame => {
         if (frame.url) {
           URL.revokeObjectURL(frame.url);
         }
@@ -85,14 +89,11 @@ function VideoDepthPlayer({ media, onClose, onNext, onPrevious }) {
   // Fetch depth blob if not provided
   const fetchDepthBlob = async (mediaItem) => {
     try {
-      const response = await fetch(`/api/media/${mediaItem.id}/depth`);
-      if (response.ok) {
-        return await response.blob();
-      }
+      return await getMediaDepth(mediaItem.id);
     } catch (error) {
       console.error('Error fetching depth blob:', error);
+      return null;
     }
-    return null;
   };
 
   // Handle playback

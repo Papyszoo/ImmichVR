@@ -22,11 +22,13 @@ function DepthViewer3D({ media, onClose, onNext, onPrevious }) {
   useEffect(() => {
     setLoading(true);
     
+    const imageUrls = [];
+    
     // Load original image
     if (media.thumbnailBlob) {
       const url = URL.createObjectURL(media.thumbnailBlob);
       setImageUrl(url);
-      return () => URL.revokeObjectURL(url);
+      imageUrls.push(url);
     } else if (media.thumbnailUrl) {
       setImageUrl(media.thumbnailUrl);
     } else if (media.originalUrl) {
@@ -37,12 +39,17 @@ function DepthViewer3D({ media, onClose, onNext, onPrevious }) {
     if (media.depthBlob) {
       const url = URL.createObjectURL(media.depthBlob);
       setDepthUrl(url);
-      return () => URL.revokeObjectURL(url);
+      imageUrls.push(url);
     } else if (media.depthUrl) {
       setDepthUrl(media.depthUrl);
     }
     
     setLoading(false);
+    
+    // Cleanup all created URLs
+    return () => {
+      imageUrls.forEach(url => URL.revokeObjectURL(url));
+    };
   }, [media]);
 
   // Load textures

@@ -756,7 +756,7 @@ def process_video_sbs():
     except subprocess.TimeoutExpired:
         return jsonify({
             "error": "Processing timeout",
-            "message": "Video processing took too long (>15 minutes total)"
+            "message": "Video processing took too long (frame extraction: 5 min limit, encoding: 10 min limit)"
         }), 504
     except Exception as e:
         logger.error(f"Error processing video SBS: {str(e)}")

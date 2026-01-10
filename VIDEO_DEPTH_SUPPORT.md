@@ -2,22 +2,40 @@
 
 ## Overview
 
-ImmichVR now includes **experimental support** for generating depth maps from video files. This feature extracts frames from videos at configurable intervals and generates depth maps for each frame, suitable for VR viewing.
+ImmichVR now includes **experimental support** for generating depth maps from video files and converting 2D videos to **Side-by-Side (SBS) 3D format**. This feature processes videos offline using depth estimation to create VR-ready content suitable for playback on Meta Quest and other VR headsets.
 
 ⚠️ **EXPERIMENTAL FEATURE**: This feature is in early stages and has known limitations. It is disabled by default and must be explicitly enabled.
 
 ## How It Works
 
-### Video Processing Pipeline
+### Video Processing Pipeline (SBS Output)
+
+The main video processing pipeline generates Side-by-Side 3D videos:
 
 1. **Video Upload/Import**: Video files are uploaded or imported from Immich
-2. **Queue Processing**: Videos are queued like photos but require experimental feature flag
-3. **Frame Extraction**: FFmpeg extracts frames at specified intervals or keyframes
+2. **Queue Processing**: Videos are queued with lower priority than photos
+3. **Frame Extraction**: FFmpeg extracts all frames at original FPS
 4. **Depth Map Generation**: Each frame is processed through Depth Anything V2 model
-5. **Storage**: Depth maps are stored as a ZIP file containing frame sequences
-6. **Retrieval**: Frames can be retrieved for VR playback
+5. **Stereo Generation**: Left and right eye views are generated using NumPy vectorized operations
+6. **SBS Composition**: Left and right views are stitched horizontally (Side-by-Side)
+7. **Video Encoding**: Final SBS video is encoded with H.264/HEVC, preserving original audio
+8. **Storage**: SBS video file is stored for VR playback
 
-### Frame Extraction Methods
+### Stereo Generation Algorithm
+
+The stereo pair generation uses **NumPy vectorized operations** for efficient processing:
+
+1. **Depth Normalization**: Depth map values are normalized to 0-1 range
+2. **Displacement Calculation**: Pixel displacement is calculated based on depth (closer = more displacement)
+3. **Coordinate Grid**: `np.meshgrid` creates coordinate grids for efficient warping
+4. **Image Warping**: `cv2.remap` applies the displacement to generate left/right eye views
+5. **Composition**: Views are horizontally concatenated for SBS output
+
+**No Python for-loops over pixels are used** - all operations are vectorized for performance.
+
+### Frame Extraction Methods (Legacy Depth-Only Mode)
+
+For the legacy depth-only processing mode:
 
 #### 1. Interval-Based (Default)
 Extracts frames at a fixed frame rate (FPS):
@@ -43,6 +61,11 @@ Add to your `.env` file:
 # Enable experimental video processing
 ENABLE_EXPERIMENTAL_VIDEO=true
 
+# SBS Processing Configuration
+VIDEO_SBS_DIVERGENCE=2.0     # Strength of 3D effect (0.5 - 10.0)
+VIDEO_SBS_FORMAT=SBS_FULL    # SBS_FULL (double width) or SBS_HALF (original width)
+
+# Legacy frame-based configuration (used for /api/video/depth endpoint)
 # Frame extraction rate (frames per second)
 VIDEO_FRAME_EXTRACTION_FPS=1
 
@@ -58,9 +81,11 @@ VIDEO_FRAME_METHOD=interval
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ENABLE_EXPERIMENTAL_VIDEO` | `false` | Enable/disable video processing |
-| `VIDEO_FRAME_EXTRACTION_FPS` | `1` | Frames per second (max: 30) |
-| `VIDEO_MAX_FRAMES` | `30` | Maximum frames per video (max: 100) |
-| `VIDEO_FRAME_METHOD` | `interval` | Extraction method |
+| `VIDEO_SBS_DIVERGENCE` | `2.0` | Strength of 3D effect (0.5-10.0) |
+| `VIDEO_SBS_FORMAT` | `SBS_FULL` | SBS_FULL (double width) or SBS_HALF |
+| `VIDEO_FRAME_EXTRACTION_FPS` | `1` | Frames per second for legacy mode (max: 30) |
+| `VIDEO_MAX_FRAMES` | `30` | Maximum frames for legacy mode (max: 100) |
+| `VIDEO_FRAME_METHOD` | `interval` | Extraction method for legacy mode |
 
 ## Usage
 
@@ -69,6 +94,10 @@ VIDEO_FRAME_METHOD=interval
 Update your `.env` file:
 ```bash
 ENABLE_EXPERIMENTAL_VIDEO=true
+
+# Optional: Configure 3D effect strength
+VIDEO_SBS_DIVERGENCE=2.0
+VIDEO_SBS_FORMAT=SBS_FULL
 ```
 
 Restart the services:
@@ -105,30 +134,51 @@ Response:
 curl http://localhost:3000/api/queue/items/QUEUE_ID
 ```
 
-### 4. Retrieve Depth Maps
+### 4. Retrieve SBS Video
 
 ```bash
-# Get depth map info
+# Get SBS video info
 curl http://localhost:3000/api/media/MEDIA_ITEM_ID/depth/info
 
-# Download depth map ZIP file
+# Download SBS video file
 curl http://localhost:3000/api/media/MEDIA_ITEM_ID/depth \
-  -o video_depth_frames.zip
+  -o video_sbs.mp4
 ```
 
-The ZIP file contains:
-```
-depth_frame_0001.png
-depth_frame_0002.png
-depth_frame_0003.png
-...
-```
+The output is a standard MP4 file in Side-by-Side format:
+- Left eye view on the left half
+- Right eye view on the right half
+- Original audio preserved
+- Compatible with standard VR video players
 
 ## API Endpoints
 
 ### AI Service Endpoints (Experimental)
 
-#### Extract Video Frames
+#### Process Video to SBS 3D (Primary Endpoint)
+```
+POST /api/video/sbs
+```
+
+Upload a video and generate a Side-by-Side 3D video.
+
+**Query Parameters:**
+- `divergence`: Strength of 3D effect (default: 2.0, range: 0.5-10.0)
+- `format`: 'SBS_FULL' (double width) or 'SBS_HALF' (original width, default: SBS_FULL)
+- `codec`: 'h264' (default) or 'hevc'
+- `batch_size`: Frames to process at once for VRAM management (default: 10)
+
+**Response:**
+Returns an MP4 video file in Side-by-Side format with audio.
+
+**Example:**
+```bash
+curl -X POST "http://localhost:5000/api/video/sbs?divergence=2.5&format=SBS_FULL" \
+  -F "video=@myvideo.mp4" \
+  -o output_sbs.mp4
+```
+
+#### Extract Video Frames (Legacy)
 ```
 POST /api/video/frames
 ```
@@ -153,7 +203,7 @@ Upload a video and extract frames.
 }
 ```
 
-#### Process Video Depth Maps
+#### Process Video Depth Maps (Legacy)
 ```
 POST /api/video/depth
 ```
@@ -177,20 +227,42 @@ Video processing uses the same endpoints as photos:
 # Upload video
 POST /api/media/upload
 
-# Get depth map
+# Get SBS video or depth map
 GET /api/media/:mediaItemId/depth?version=full_resolution
 
-# Get depth map info
+# Get processing info
 GET /api/media/:mediaItemId/depth/info
 ```
 
-For videos, the depth map is stored as a ZIP file containing frame sequences.
+For videos, the output is now an MP4 SBS video file (previously ZIP file with depth frames).
 
 ## Output Format
 
-### ZIP File Structure
+### SBS Video Format (Primary)
 
-The depth map ZIP file contains PNG images for each extracted frame:
+The SBS (Side-by-Side) video output is a standard MP4 file:
+
+**SBS_FULL Format:**
+- Resolution: `(original_width * 2) x original_height`
+- Example: 1920x1080 source → 3840x1080 SBS output
+- Full resolution per eye
+- Larger file size
+
+**SBS_HALF Format:**
+- Resolution: `original_width x original_height`
+- Example: 1920x1080 source → 1920x1080 SBS output
+- Half horizontal resolution per eye (960x1080 per eye)
+- Smaller file size, compatible with more players
+
+**Video Properties:**
+- Codec: H.264 (default) or HEVC
+- Audio: Original audio stream copied without re-encoding
+- Container: MP4
+- Compatible with all standard VR video players (Meta Quest, SteamVR, etc.)
+
+### Legacy ZIP Format (Depth-Only Mode)
+
+When using the `/api/video/depth` endpoint, the output is a ZIP file:
 
 ```
 depth_frame_0001.png  # Frame 1 depth map
@@ -206,37 +278,38 @@ Each PNG is a grayscale depth map where:
 
 ### VR Playback
 
-For VR viewing, frames can be:
-1. **Sequential playback**: Display frames in sequence synced to video timing
-2. **Side-by-side**: Combine original frame + depth map for stereoscopic viewing
+For VR viewing:
+1. **SBS Video (Recommended)**: Play directly in any VR video player (e.g., Meta Quest TV, Skybox, Pigasus)
+2. **Sequential playback**: Display depth frames in sequence synced to video timing
 3. **3D mesh**: Convert depth maps to 3D meshes for immersive viewing
 
 ## Performance Considerations
 
 ### Processing Time
 
-Video processing is significantly slower than photos:
+SBS video processing time depends on video length and resolution:
 
-| Video Length | FPS | Frames | Est. Time |
-|--------------|-----|--------|-----------|
-| 30 seconds   | 1   | 30     | ~2-5 min  |
-| 1 minute     | 1   | 30*    | ~2-5 min  |
-| 5 minutes    | 1   | 30*    | ~2-5 min  |
+| Video Length | Resolution | Est. Time | Output Size |
+|--------------|------------|-----------|-------------|
+| 10 seconds   | 1080p      | ~2-5 min  | ~10-30 MB   |
+| 30 seconds   | 1080p      | ~5-10 min | ~30-100 MB  |
+| 1 minute     | 1080p      | ~10-20 min| ~60-200 MB  |
 
-*Limited by `VIDEO_MAX_FRAMES` setting
+Processing is done frame-by-frame with batch management for VRAM efficiency.
 
 ### Resource Usage
 
 - **Memory**: ~2-4GB RAM during processing
-- **Disk**: ~1-5MB per frame (depth maps)
-- **CPU/GPU**: High usage during depth estimation
+- **GPU VRAM**: Managed via batch processing (default: 10 frames per batch)
+- **Disk**: Temporary space for frame processing (cleaned up after completion)
+- **CPU/GPU**: High usage during depth estimation and video encoding
 
 ### Optimization Tips
 
-1. **Lower FPS**: Use 0.5 fps for long videos
-2. **Reduce max_frames**: Set to 10-20 for faster processing
-3. **Use keyframes**: Extract fewer, more important frames
-4. **Scale down**: Frames are automatically scaled to 480p for faster processing
+1. **Lower divergence**: Use 1.0-2.0 for subtle 3D effect
+2. **SBS_HALF format**: Smaller output files, faster encoding
+3. **Shorter clips**: Process videos in segments for faster turnaround
+4. **GPU acceleration**: Use CUDA-enabled GPU for faster inference
 
 ## Limitations
 

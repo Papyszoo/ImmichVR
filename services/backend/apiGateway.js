@@ -135,6 +135,53 @@ class APIGateway {
   }
 
   /**
+   * Process video to Side-by-Side 3D format (experimental)
+   * @param {string} videoPath - Path to the video file
+   * @param {number} divergence - Strength of 3D effect (default: 2.0)
+   * @param {string} sbsFormat - 'SBS_FULL' or 'SBS_HALF' (default: 'SBS_FULL')
+   * @param {string} codec - 'h264' or 'hevc' (default: 'h264')
+   * @param {number} batchSize - Frames to process at once for VRAM management (default: 10)
+   * @returns {Promise<Buffer>} - SBS video file as buffer
+   */
+  async processVideoSBS(videoPath, divergence = 2.0, sbsFormat = 'SBS_FULL', codec = 'h264', batchSize = 10) {
+    try {
+      // Create form data
+      const formData = new FormData();
+      formData.append('video', fs.createReadStream(videoPath));
+
+      // Send to AI service with query parameters
+      const response = await this.aiClient.post('/api/video/sbs', formData, {
+        params: {
+          divergence,
+          format: sbsFormat,
+          codec,
+          batch_size: batchSize
+        },
+        headers: {
+          ...formData.getHeaders()
+        },
+        responseType: 'arraybuffer',
+        timeout: 900000 // 15 minutes for SBS video processing (longer than depth-only)
+      });
+
+      if (response.status !== 200) {
+        throw new Error(`AI service returned status ${response.status}`);
+      }
+
+      return Buffer.from(response.data);
+
+    } catch (error) {
+      if (error.response) {
+        throw new Error(`AI service error: ${error.response.status} - ${error.response.statusText}`);
+      } else if (error.request) {
+        throw new Error('No response from AI service - service may be down');
+      } else {
+        throw new Error(`Request setup error: ${error.message}`);
+      }
+    }
+  }
+
+  /**
    * Route request to AI service (generic proxy)
    */
   async proxyToAIService(path, method = 'GET', data = null, headers = {}) {

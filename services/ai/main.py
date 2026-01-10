@@ -603,15 +603,24 @@ def process_video_sbs():
             "message": "No file selected"
         }), 400
     
-    # Parse parameters
-    divergence = min(max(float(request.args.get('divergence', 2.0)), 0.5), 10.0)
+    # Parse parameters with error handling
+    try:
+        divergence = min(max(float(request.args.get('divergence', 2.0)), 0.5), 10.0)
+    except (ValueError, TypeError):
+        divergence = 2.0
+    
     sbs_format = request.args.get('format', 'SBS_FULL').upper()
     if sbs_format not in ['SBS_FULL', 'SBS_HALF']:
         sbs_format = 'SBS_FULL'
+    
     codec = request.args.get('codec', 'h264').lower()
     if codec not in ['h264', 'hevc']:
         codec = 'h264'
-    batch_size = min(max(int(request.args.get('batch_size', 10)), 1), 50)
+    
+    try:
+        batch_size = min(max(int(request.args.get('batch_size', 10)), 1), 50)
+    except (ValueError, TypeError):
+        batch_size = 10
     
     temp_video_path = None
     work_dir = None
@@ -747,7 +756,7 @@ def process_video_sbs():
     except subprocess.TimeoutExpired:
         return jsonify({
             "error": "Processing timeout",
-            "message": "Video processing took too long (>10 minutes)"
+            "message": "Video processing took too long (>15 minutes total)"
         }), 504
     except Exception as e:
         logger.error(f"Error processing video SBS: {str(e)}")

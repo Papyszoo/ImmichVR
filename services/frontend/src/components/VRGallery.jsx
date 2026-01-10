@@ -5,6 +5,7 @@ import { Sky, Environment } from '@react-three/drei';
 import Gallery from './Gallery';
 import DepthViewer3D from './DepthViewer3D';
 import VideoDepthPlayer from './VideoDepthPlayer';
+import PerformanceMonitor from './PerformanceMonitor';
 
 /**
  * VRGallery - Main VR gallery container with XR support
@@ -12,6 +13,7 @@ import VideoDepthPlayer from './VideoDepthPlayer';
 function VRGallery({ media = [], onSelectMedia }) {
   const [selectedMedia, setSelectedMedia] = useState(null);
   const [viewerMode, setViewerMode] = useState('gallery'); // 'gallery', 'photo', 'video'
+  const [showPerformance, setShowPerformance] = useState(false);
 
   const handleSelectMedia = (mediaItem) => {
     setSelectedMedia(mediaItem);
@@ -49,6 +51,17 @@ function VRGallery({ media = [], onSelectMedia }) {
     handleSelectMedia(media[previousIndex]);
   };
 
+  // Toggle performance monitor with keyboard shortcut (P key)
+  React.useEffect(() => {
+    const handleKeyPress = (e) => {
+      if (e.key === 'p' || e.key === 'P') {
+        setShowPerformance(prev => !prev);
+      }
+    };
+    window.addEventListener('keypress', handleKeyPress);
+    return () => window.removeEventListener('keypress', handleKeyPress);
+  }, []);
+
   return (
     <>
       <VRButton />
@@ -61,6 +74,9 @@ function VRGallery({ media = [], onSelectMedia }) {
           {/* Environment */}
           <Sky sunPosition={[100, 20, 100]} />
           <Environment preset="sunset" />
+          
+          {/* Performance Monitor */}
+          <PerformanceMonitor enabled={showPerformance} />
           
           {/* Conditional Rendering based on viewer mode */}
           {viewerMode === 'gallery' && (

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import TimelineGallery from './components/TimelineGallery';
-import VRGallery from './components/VRGallery';
+
 import VRThumbnailGallery from './components/VRThumbnailGallery';
 import { getImmichPhotos, getImmichThumbnail, getImmichFile, generateImmichDepth } from './services/api';
 
@@ -12,7 +12,7 @@ function App() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
   const [selectedPhoto, setSelectedPhoto] = useState(null);
-  const [viewMode, setViewMode] = useState('gallery'); // 'gallery', 'vr-gallery', or 'viewer'
+  const [viewMode, setViewMode] = useState('vr-gallery'); // 'gallery', 'vr-gallery', or 'viewer'
   const [loadingDepth, setLoadingDepth] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -92,54 +92,10 @@ function App() {
 
   const handleSelectPhoto = async (photo) => {
     setSelectedPhoto(photo);
-    setViewMode('viewer');
-    setLoadingDepth(true);
-    
-    // Generate depth map in background
-    try {
-      console.log(`Generating depth for ${photo.id}...`);
-      const depthBlob = await generateImmichDepth(photo.id);
-      const depthUrl = URL.createObjectURL(depthBlob);
-      
-      // Update the selected photo with depth data
-      setSelectedPhoto(prev => ({
-        ...prev,
-        depthUrl,
-        depthBlob
-      }));
-      console.log(`Depth generated for ${photo.id}`);
-    } catch (err) {
-      console.error('Failed to generate depth:', err);
-      // Continue without depth - will show flat image
-    } finally {
-      setLoadingDepth(false);
-    }
+    setViewMode('vr-gallery');
   };
 
-  const handleCloseViewer = () => {
-    setSelectedPhoto(null);
-    setViewMode('gallery');
-  };
 
-  const handleNextPhoto = () => {
-    if (!selectedPhoto) return;
-    const currentIndex = photos.findIndex(p => p.id === selectedPhoto.id);
-    const nextIndex = (currentIndex + 1) % photos.length;
-    
-    // If near the end, load more
-    if (nextIndex > photos.length - 10 && hasMore) {
-      loadMorePhotos();
-    }
-    
-    handleSelectPhoto(photos[nextIndex]);
-  };
-
-  const handlePreviousPhoto = () => {
-    if (!selectedPhoto) return;
-    const currentIndex = photos.findIndex(p => p.id === selectedPhoto.id);
-    const prevIndex = (currentIndex - 1 + photos.length) % photos.length;
-    handleSelectPhoto(photos[prevIndex]);
-  };
 
   // Loading state
   if (loading) {
@@ -161,33 +117,25 @@ function App() {
     );
   }
 
-  // VR Viewer mode (single photo with depth)
-  if (viewMode === 'viewer' && selectedPhoto) {
-    return (
-      <VRGallery 
-        media={[selectedPhoto]} 
-        selectedMedia={selectedPhoto}
-        onClose={handleCloseViewer}
-        onNext={handleNextPhoto}
-        onPrevious={handlePreviousPhoto}
-        loadingDepth={loadingDepth}
-      />
-    );
-  }
-
-  // VR Thumbnail Gallery mode (3D grid with depth thumbnails)
+  // VR Thumbnail Gallery mode (3D grid with integrated viewer)
   if (viewMode === 'vr-gallery') {
     return (
       <VRThumbnailGallery
         photos={photos}
+        initialSelectedId={selectedPhoto?.id}
         onSelectPhoto={handleSelectPhoto}
-        onClose={() => setViewMode('gallery')}
+        onClose={() => {
+          setSelectedPhoto(null);
+          setViewMode('gallery'); 
+        }}
         onLoadMore={loadMorePhotos}
         hasMore={hasMore}
         loadingMore={loadingMore}
       />
     );
   }
+
+
 
   // Timeline gallery mode (2D HTML)
   return (

@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import * as THREE from 'three';
 import { useTexture } from '@react-three/drei';
-import { useThree, extend } from '@react-three/fiber';
+import { useThree, extend, useFrame } from '@react-three/fiber';
+import { useSpring } from '@react-spring/three';
 import { ParallaxDepthMaterial, SimpleParallaxMaterial } from '../shaders/ParallaxDepthMaterial';
 
 // Extend Three.js with our custom materials
 extend({ ParallaxDepthMaterial, SimpleParallaxMaterial });
 
 /**
- * DepthThumbnailMesh - Renders thumbnail with parallax depth effect
+ * ParallaxPhotoMesh - Renders thumbnail with parallax depth effect
  * 
  * Uses parallax occlusion mapping instead of displacement for better performance:
  * - Only 4 vertices per thumbnail (flat quad)
@@ -16,7 +17,7 @@ extend({ ParallaxDepthMaterial, SimpleParallaxMaterial });
  * - ~256x fewer vertices than displacement approach
  * - Better visual quality at viewing distance
  */
-function DepthThumbnailMesh({ 
+function ParallaxPhotoMesh({ 
   imageUrl, 
   depthUrl, 
   hovered, 
@@ -24,15 +25,45 @@ function DepthThumbnailMesh({
   depthScale = 0.08, 
   targetWidth = 1.2, 
   targetHeight = 0.9,
-  useSimpleParallax = false 
+  useSimpleParallax = false,
+  opacity = 1.0
 }) {
   const meshRef = useRef();
   const materialRef = useRef();
   
-  // Load textures
-  const textures = useTexture(depthUrl ? [imageUrl, depthUrl] : [imageUrl]);
-  const imageTexture = Array.isArray(textures) ? textures[0] : textures;
-  const depthTexture = Array.isArray(textures) && textures[1] ? textures[1] : null;
+  // Load textures using useTexture
+  // Note: Since this component is only rendered when depthUrl is truthy, 
+  // the array length is stable (2 elements).
+  const textures = useTexture([imageUrl, depthUrl]);
+  const imageTexture = textures[0];
+  const depthTexture = textures[1];
+  
+  // Configure textures for NPOT support (prevent WebGL errors)
+  useEffect(() => {
+    // DEBUG LOGGING
+    console.log('[DepthThumbnailMesh] Textures loaded:', { 
+      img: imageTexture, 
+      depth: depthTexture,
+      imgFormat: imageTexture?.format,
+      depthFormat: depthTexture?.format,
+      imgImage: imageTexture?.image,
+    });
+
+    if (imageTexture) {
+      imageTexture.minFilter = THREE.LinearFilter;
+      imageTexture.generateMipmaps = false;
+      imageTexture.wrapS = THREE.ClampToEdgeWrapping;
+      imageTexture.wrapT = THREE.ClampToEdgeWrapping;
+      imageTexture.needsUpdate = true;
+    }
+    if (depthTexture) {
+      depthTexture.minFilter = THREE.LinearFilter;
+      depthTexture.generateMipmaps = false;
+      depthTexture.wrapS = THREE.ClampToEdgeWrapping;
+      depthTexture.wrapT = THREE.ClampToEdgeWrapping;
+      depthTexture.needsUpdate = true;
+    }
+  }, [imageTexture, depthTexture]);
   
   // Calculate scale based on hover state
   const targetScale = hovered ? 1.05 : 1;
@@ -42,15 +73,31 @@ function DepthThumbnailMesh({
     return new THREE.PlaneGeometry(targetWidth, targetHeight, 1, 1);
   }, [targetWidth, targetHeight]);
 
-  // Update material uniforms when textures change
+  // Animate depth scale on mount/change
+  const { animatedDepthScale } = useSpring({
+    animatedDepthScale: depthScale,
+    from: { animatedDepthScale: 0 },
+    config: { tension: 120, friction: 14 }
+  });
+
+  // Update uniforms per frame for smooth animation
+  useFrame(() => {
+    if (materialRef.current) {
+      materialRef.current.uniforms.depthScale.value = animatedDepthScale.get();
+    }
+  });
+
+  // Update other uniforms when textures change
   useEffect(() => {
     if (materialRef.current) {
       materialRef.current.uniforms.colorMap.value = imageTexture;
       materialRef.current.uniforms.depthMap.value = depthTexture;
       materialRef.current.uniforms.hasDepth.value = !!depthTexture;
-      materialRef.current.uniforms.depthScale.value = depthScale;
+      if (materialRef.current.uniforms.opacity) {
+        materialRef.current.uniforms.opacity.value = opacity;
+      }
     }
-  }, [imageTexture, depthTexture, depthScale]);
+  }, [imageTexture, depthTexture, opacity]);
 
   return (
     <mesh
@@ -67,6 +114,7 @@ function DepthThumbnailMesh({
           depthScale={depthScale}
           hasDepth={!!depthTexture}
           transparent
+          opacity={opacity}
           side={THREE.DoubleSide}
         />
       ) : (
@@ -79,6 +127,7 @@ function DepthThumbnailMesh({
           parallaxMinLayers={4}
           parallaxMaxLayers={12}
           transparent
+          opacity={opacity}
           side={THREE.DoubleSide}
         />
       )}
@@ -89,10 +138,12 @@ function DepthThumbnailMesh({
 /**
  * FallbackMesh - Uses standard material when depth isn't available
  */
-function FallbackMesh({ imageUrl, hovered, onClick, targetWidth, targetHeight }) {
+function FallbackMesh({ imageUrl, hovered, onClick, targetWidth, targetHeight, ...props }) {
   const meshRef = useRef();
   const texture = useTexture(imageUrl);
   const targetScale = hovered ? 1.05 : 1;
+  // FallbackMesh opacity support
+  const opacity = props.opacity !== undefined ? props.opacity : 1.0;
   
   return (
     <mesh
@@ -104,6 +155,8 @@ function FallbackMesh({ imageUrl, hovered, onClick, targetWidth, targetHeight })
       <meshStandardMaterial
         map={texture}
         side={THREE.DoubleSide}
+        transparent={opacity < 1.0}
+        opacity={opacity}
       />
     </mesh>
   );
@@ -126,7 +179,7 @@ function PlaceholderMesh({ hovered, width = 1.2, height = 0.9 }) {
 }
 
 /**
- * DepthThumbnail - Individual thumbnail with parallax depth effect in VR space
+ * VRPhoto - Individual thumbnail with parallax depth effect in VR space
  * 
  * Performance characteristics:
  * - 4 vertices per thumbnail (vs 1024+ with displacement)
@@ -142,7 +195,7 @@ function PlaceholderMesh({ hovered, width = 1.2, height = 0.9 }) {
  * @param {boolean} enableDepth - Whether to show depth effect
  * @param {boolean} useSimpleParallax - Use faster single-sample parallax
  */
-function DepthThumbnail({ 
+function VRPhoto({ 
   photo, 
   position, 
   rotation = [0, 0, 0], 
@@ -150,11 +203,14 @@ function DepthThumbnail({
   depthScale = 0.08,  // Reduced default for parallax (more sensitive than displacement)
   thumbnailHeight = 0.6,
   enableDepth = false,
-  useSimpleParallax = false  // New prop for performance mode
+  useSimpleParallax = false,  // New prop for performance mode
+  opacity = 1.0,
+  loadFullQuality = false // New prop to trigger full quality load
 }) {
   const [hovered, setHovered] = useState(false);
   const [imageUrl, setImageUrl] = useState(null);
   const [depthUrl, setDepthUrl] = useState(null);
+  const [fullQualityLoaded, setFullQualityLoaded] = useState(false);
 
   // Calculate initial dimensions based on EXIF or ratio
   const initialDimensions = useMemo(() => {
@@ -182,6 +238,9 @@ function DepthThumbnail({
 
   // Set up image URL
   useEffect(() => {
+    // If we've already loaded full quality for this photo ID, don't revert to thumbnail
+    if (fullQualityLoaded && imageUrl) return;
+
     if (photo.thumbnailUrl) {
       setImageUrl(photo.thumbnailUrl);
     } else if (photo.thumbnailBlob) {
@@ -189,7 +248,39 @@ function DepthThumbnail({
       setImageUrl(url);
       return () => URL.revokeObjectURL(url);
     }
-  }, [photo.thumbnailUrl, photo.thumbnailBlob]);
+  }, [photo.thumbnailUrl, photo.thumbnailBlob, photo.id, fullQualityLoaded]);
+
+  // Load full quality image if requested
+  useEffect(() => {
+    if (loadFullQuality && !fullQualityLoaded) {
+      let isActive = true;
+      const loadFull = async () => {
+        try {
+          const { getImmichFile } = await import('../services/api');
+          if (!isActive) return;
+          
+          // Check if we can get the file
+          const blob = await getImmichFile(photo.id);
+          if (!isActive) return;
+          
+          const url = URL.createObjectURL(blob);
+          setImageUrl(url);
+          setFullQualityLoaded(true);
+          
+          // Cleanup function for this specific URL when component unmounts or URL changes
+          return () => URL.revokeObjectURL(url);
+        } catch (err) {
+          console.warn(`Failed to load full quality image for ${photo.id}`, err);
+        }
+      };
+      
+      loadFull();
+      return () => { isActive = false; };
+    } else if (!loadFullQuality && fullQualityLoaded) {
+       // Reset if deselected? Maybe keep it cached? 
+       // For now, let's keep it if loaded to avoid flickering if quickly reselected
+    }
+  }, [loadFullQuality, photo.id, fullQualityLoaded]);
 
   // Set up depth URL from photo prop or fetch if enabled
   useEffect(() => {
@@ -201,6 +292,9 @@ function DepthThumbnail({
       return () => URL.revokeObjectURL(url);
     } else if (enableDepth && !depthUrl) {
       // Fetch depth if enabled and not already present
+      // Only fetch depth if full quality is requested/loaded to adhere to "no depth on thumbnails" policy strictness?
+      // User said "removed depth from thumbnails". So we should PROBABLY strictly check enableDepth OR ensure enableDepth is disabled for thumbnails.
+      
       let isActive = true;
       
       const fetchDepth = async () => {
@@ -253,7 +347,7 @@ function DepthThumbnail({
       {imageUrl ? (
         <Suspense fallback={<PlaceholderMesh hovered={hovered} width={initialDimensions.width} height={initialDimensions.height} />}>
           {shouldUseParallax ? (
-            <DepthThumbnailMesh
+            <ParallaxPhotoMesh
               imageUrl={imageUrl}
               depthUrl={depthUrl}
               hovered={hovered}
@@ -262,6 +356,7 @@ function DepthThumbnail({
               targetWidth={initialDimensions.width}
               targetHeight={initialDimensions.height}
               useSimpleParallax={useSimpleParallax}
+              opacity={opacity}
             />
           ) : (
             <FallbackMesh
@@ -270,6 +365,7 @@ function DepthThumbnail({
               onClick={handleClick}
               targetWidth={initialDimensions.width}
               targetHeight={initialDimensions.height}
+              opacity={opacity}
             />
           )}
         </Suspense>
@@ -288,4 +384,4 @@ function DepthThumbnail({
   );
 }
 
-export default DepthThumbnail;
+export default VRPhoto;

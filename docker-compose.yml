@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
       POSTGRES_DB: ${POSTGRES_DB:-immichvr}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./data/db:/var/lib/postgresql/data
       - ./services/db/init:/docker-entrypoint-initdb.d:ro
     networks:
       - immichvr-network
@@ -54,14 +54,14 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-immichvr}
       POSTGRES_HOST: db
       AI_SERVICE_URL: http://ai:5000
-      UPLOAD_DIR: /data/uploads
-      DEPTH_MAPS_DIR: /data/depth_maps
+      UPLOAD_DIR: /app/data/uploads
+      DEPTH_MAPS_DIR: /app/data/depth_maps
       AUTO_START_WORKER: ${AUTO_START_WORKER:-true}
       IMMICH_URL: ${IMMICH_URL}
       IMMICH_API_KEY: ${IMMICH_API_KEY}
     volumes:
-      - media_uploads:/data/uploads
-      - depth_maps:/data/depth_maps
+      - ./data/uploads:/app/data/uploads
+      - ./data/depth_maps:/app/data/depth_maps
     networks:
       - immichvr-network
     depends_on:
@@ -111,7 +111,4 @@ networks:
     driver: bridge
 
 volumes:
-  postgres_data:
-  media_uploads:
-  depth_maps:
   ssl_certs:

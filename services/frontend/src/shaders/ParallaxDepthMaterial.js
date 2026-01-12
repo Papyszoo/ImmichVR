@@ -41,6 +41,7 @@ const fragmentShader = /* glsl */ `
   uniform float parallaxMinLayers;
   uniform float parallaxMaxLayers;
   uniform bool hasDepth;
+  uniform float opacity;
   
   varying vec2 vUv;
   varying vec3 vViewPosition;
@@ -115,7 +116,7 @@ const fragmentShader = /* glsl */ `
                      smoothstep(0.0, 0.05, parallaxUV.y) * 
                      smoothstep(1.0, 0.95, parallaxUV.y);
     
-    gl_FragColor = vec4(color.rgb, color.a * edgeFade);
+    gl_FragColor = vec4(color.rgb, color.a * edgeFade * opacity);
   }
 `;
 
@@ -132,6 +133,7 @@ const ParallaxDepthMaterial = shaderMaterial(
     parallaxMinLayers: 4,       // Minimum ray march steps (when viewing straight-on)
     parallaxMaxLayers: 16,      // Maximum ray march steps (at grazing angles)
     hasDepth: false,
+    opacity: 1.0,
   },
   vertexShader,
   fragmentShader
@@ -161,6 +163,7 @@ const simpleFragmentShader = /* glsl */ `
   uniform sampler2D depthMap;
   uniform float depthScale;
   uniform bool hasDepth;
+  uniform float opacity;
   
   varying vec2 vUv;
   varying vec3 vViewPosition;
@@ -176,7 +179,8 @@ const simpleFragmentShader = /* glsl */ `
       uv = clamp(vUv - offset, vec2(0.0), vec2(1.0));
     }
     
-    gl_FragColor = texture2D(colorMap, uv);
+    vec4 color = texture2D(colorMap, uv);
+    gl_FragColor = vec4(color.rgb, color.a * opacity);
   }
 `;
 
@@ -186,6 +190,7 @@ const SimpleParallaxMaterial = shaderMaterial(
     depthMap: null,
     depthScale: 0.05,
     hasDepth: false,
+    opacity: 1.0,
   },
   simpleVertexShader,
   simpleFragmentShader

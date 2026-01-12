@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
  * TimelineGallery - Immich-style timeline photo gallery
  * Features: date grouping, aspect ratios, lazy loading, timeline scrubber
  */
-function TimelineGallery({ photos = [], onSelectPhoto }) {
+function TimelineGallery({ photos = [], onSelectPhoto, onEnterVR }) {
   const containerRef = useRef(null);
   const [visiblePhotos, setVisiblePhotos] = useState(new Set());
   
@@ -70,11 +70,13 @@ function TimelineGallery({ photos = [], onSelectPhoto }) {
   // Calculate thumbnail dimensions (same height, variable width)
   const getThumbStyle = (photo) => {
     const height = 150;
-    const width = photo.exifInfo?.exifImageWidth && photo.exifInfo?.exifImageHeight
-      ? Math.round((photo.exifInfo.exifImageWidth / photo.exifInfo.exifImageHeight) * height)
+    // Use exifImageWidth/Height from exifInfo
+    const exif = photo.exifInfo;
+    const width = exif?.exifImageWidth && exif?.exifImageHeight
+      ? Math.round((exif.exifImageWidth / exif.exifImageHeight) * height)
       : height; // Default to square if no dimensions
     
-    return { width: `${Math.max(100, Math.min(300, width))}px`, height: `${height}px` };
+    return { width: `${Math.max(80, Math.min(300, width))}px`, height: `${height}px` };
   };
 
   if (photos.length === 0) {
@@ -134,9 +136,9 @@ function TimelineGallery({ photos = [], onSelectPhoto }) {
         ))}
       </div>
 
-      {/* VR Button */}
-      <button style={styles.vrButton} onClick={() => window.xrStore?.enterVR()}>
-        🥽 Enter VR
+      {/* VR Gallery Button */}
+      <button style={styles.vrButton} onClick={onEnterVR}>
+        🥽 VR Gallery
       </button>
     </div>
   );

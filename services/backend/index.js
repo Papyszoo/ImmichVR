@@ -644,6 +644,152 @@ app.get('/api/immich/assets/:assetId/file', requireImmichConnector, async (req, 
   }
 });
 
+// Generate depth map for an Immich asset (with caching)
+app.post('/api/immich/assets/:assetId/depth', requireImmichConnector, async (req, res) => {
+  const { assetId } = req.params;
+  console.log(`Generating depth map for Immich asset: ${assetId}`);
+  
+  try {
+    // First, check if we have a cached depth map for this Immich asset
+    const cacheResult = await pool.query(
+      `SELECT dmc.file_path, dmc.file_size
+       FROM depth_map_cache dmc
+       JOIN media_items mi ON mi.id = dmc.media_item_id
+       WHERE mi.immich_asset_id = $1 AND dmc.version_type = 'thumbnail'`,
+      [assetId]
+    );
+    
+    if (cacheResult.rows.length > 0) {
+      // Return cached depth map
+      const cachedPath = cacheResult.rows[0].file_path;
+      console.log(`Returning cached depth map for ${assetId}: ${cachedPath}`);
+      
+      try {
+        const cachedBuffer = await fs.readFile(cachedPath);
+        
+        // Update access stats
+        await pool.query(
+          `UPDATE depth_map_cache dmc
+           SET accessed_at = NOW(), access_count = access_count + 1
+           FROM media_items mi
+           WHERE mi.id = dmc.media_item_id 
+             AND mi.immich_asset_id = $1 
+             AND dmc.version_type = 'thumbnail'`,
+          [assetId]
+        );
+        
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('X-Depth-Cache', 'hit');
+        return res.send(cachedBuffer);
+      } catch (readError) {
+        console.warn(`Cached file not readable, regenerating: ${readError.message}`);
+        // Continue to regenerate
+      }
+    }
+    
+    console.log(`No cache found for ${assetId}, generating new depth map...`);
+    
+    // Fetch the thumbnail image from Immich (faster than full resolution)
+    const imageBuffer = await immichConnector.getThumbnail(assetId, { size: 'preview', format: 'JPEG' });
+    console.log(`Fetched thumbnail, size: ${imageBuffer.length} bytes`);
+    
+    // Get asset info for filename
+    const assetInfo = await immichConnector.getAssetInfo(assetId);
+    
+    // Send to AI service for depth processing
+    const FormData = require('form-data');
+    const axios = require('axios');
+    
+    const formData = new FormData();
+    formData.append('image', imageBuffer, {
+      filename: assetInfo.originalFileName || 'image.jpg',
+      contentType: 'image/jpeg'
+    });
+    
+    const aiUrl = process.env.AI_SERVICE_URL || 'http://ai:5000';
+    console.log(`Sending to AI at ${aiUrl}/api/depth`);
+    
+    const aiResponse = await axios.post(`${aiUrl}/api/depth`, formData, {
+      headers: formData.getHeaders(),
+      responseType: 'arraybuffer',
+      timeout: 120000, // 2 minutes
+    });
+    
+    const depthBuffer = Buffer.from(aiResponse.data);
+    console.log(`Generated depth map for ${assetId}, size: ${depthBuffer.length} bytes`);
+    
+    // Save to cache (in background, don't block response)
+    (async () => {
+      try {
+        // Create or get media item for this Immich asset
+        let mediaItemId;
+        const existingMedia = await pool.query(
+          'SELECT id FROM media_items WHERE immich_asset_id = $1',
+          [assetId]
+        );
+        
+        if (existingMedia.rows.length > 0) {
+          mediaItemId = existingMedia.rows[0].id;
+        } else {
+          // Create a minimal media item record for caching
+          const insertResult = await pool.query(
+            `INSERT INTO media_items 
+             (original_filename, media_type, immich_asset_id, source_type)
+             VALUES ($1, 'photo', $2, 'immich')
+             RETURNING id`,
+            [assetInfo.originalFileName || `immich_${assetId}`, assetId]
+          );
+          mediaItemId = insertResult.rows[0].id;
+        }
+        
+        // Save depth map to disk
+        const depthMapsDir = process.env.DEPTH_MAPS_DIR || '/data/depth_maps';
+        await fs.mkdir(depthMapsDir, { recursive: true });
+        
+        const baseFilename = path.parse(assetInfo.originalFileName || `immich_${assetId}`).name;
+        const depthFilename = `${baseFilename}_${mediaItemId}_immich_depth.png`;
+        const depthFilePath = path.join(depthMapsDir, depthFilename);
+        
+        await fs.writeFile(depthFilePath, depthBuffer);
+        console.log(`Cached depth map saved to: ${depthFilePath}`);
+        
+        // Store metadata in database
+        await pool.query(
+          `INSERT INTO depth_map_cache 
+           (media_item_id, file_path, file_size, format, width, height, model_name, model_version, version_type)
+           VALUES ($1, $2, $3, 'png', 0, 0, 'Depth-Anything-V2', 'small', 'thumbnail')
+           ON CONFLICT (media_item_id, version_type) 
+           DO UPDATE SET 
+             file_path = EXCLUDED.file_path,
+             file_size = EXCLUDED.file_size,
+             generated_at = NOW(),
+             accessed_at = NOW(),
+             access_count = 0`,
+          [mediaItemId, depthFilePath, depthBuffer.length]
+        );
+        console.log(`Depth map metadata stored for media_item_id=${mediaItemId}`);
+      } catch (cacheError) {
+        console.error(`Failed to cache depth map for ${assetId}:`, cacheError.message);
+        // Don't throw - caching failure shouldn't break the response
+      }
+    })();
+    
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('X-Depth-Cache', 'miss');
+    res.send(depthBuffer);
+  } catch (error) {
+    console.error(`Error generating depth for ${assetId}:`, error.message);
+    if (error.response) {
+      console.error(`AI response status: ${error.response.status}`);
+      console.error(`AI response data:`, error.response.data?.toString?.() || error.response.data);
+    }
+    res.status(500).json({
+      error: 'Failed to generate depth map',
+      message: error.message,
+    });
+  }
+});
+
 // Search assets
 app.post('/api/immich/search', requireImmichConnector, async (req, res) => {
   try {

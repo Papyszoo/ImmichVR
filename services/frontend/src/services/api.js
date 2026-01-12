@@ -50,10 +50,14 @@ export const getImmichAssets = async (params = {}) => {
 };
 
 /**
- * Get Immich photos
+ * Get Immich photos with pagination
+ * @param {number} page - Page number (0-indexed)
+ * @param {number} size - Number of photos per page
  */
-export const getImmichPhotos = async () => {
-  const response = await api.get('/immich/photos');
+export const getImmichPhotos = async (page = 0, size = 100) => {
+  const response = await api.get('/immich/photos', {
+    params: { page, size }
+  });
   return response.data;
 };
 
@@ -77,6 +81,19 @@ export const getImmichThumbnail = async (assetId) => {
 export const getImmichFile = async (assetId) => {
   const response = await api.get(`/immich/assets/${assetId}/file`, {
     responseType: 'blob',
+  });
+  return response.data;
+};
+
+/**
+ * Generate depth map for an Immich photo
+ * @param {string} assetId - The asset ID
+ * @returns {Promise<Blob>} - Depth map image blob
+ */
+export const generateImmichDepth = async (assetId) => {
+  const response = await api.post(`/immich/assets/${assetId}/depth`, {}, {
+    responseType: 'blob',
+    timeout: 120000, // 2 minutes for depth processing
   });
   return response.data;
 };

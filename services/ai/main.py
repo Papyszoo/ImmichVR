@@ -772,10 +772,15 @@ def process_video_sbs():
             shutil.rmtree(work_dir, ignore_errors=True)
 
 
+# Initialize model on module load (important for gunicorn)
+# This runs both when imported by gunicorn and when run directly
+logger.info("Starting model initialization...")
+if not initialize_model():
+    logger.warning("Model initialization failed, service starting without model")
+else:
+    logger.info("Model initialization completed successfully")
+
+
 if __name__ == "__main__":
-    # Initialize model on startup
-    if not initialize_model():
-        logger.warning("Model initialization failed, service starting without model")
-    
     port = int(os.environ.get("AI_SERVICE_PORT", 5000))
     app.run(host="0.0.0.0", port=port)

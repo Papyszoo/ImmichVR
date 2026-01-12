@@ -134,8 +134,9 @@ class ImmichConnector {
     try {
       // Immich v2.0+ uses POST /search/metadata instead of GET /api/asset
       const searchData = {
-        size: options.size || 1000,
+        size: options.size || 500, // Increased default for more photos
         page: options.page || 1, // v2 API uses 1-based pagination
+        withExif: true, // Include EXIF data for dimensions
       };
 
       // Add optional filters
@@ -275,15 +276,131 @@ class ImmichConnector {
   }
 
   /**
-   * Get all photos (filtered assets)
+   * Get all time buckets for timeline view
    * @param {Object} options - Query options
+   * @param {boolean} options.withPartners - Include partner shared assets (default: true)
+   * @param {boolean} options.withStacked - Include stacked assets (default: true)
+   * @returns {Promise<Array>} Array of { timeBucket, count }
+   */
+  async getTimeBuckets(options = {}) {
+    try {
+      const params = {
+        visibility: 'timeline',
+        withPartners: options.withPartners ?? true,
+        withStacked: options.withStacked ?? true,
+      };
+      const response = await this.client.get('/timeline/buckets', { params });
+      return response.data; // Array of { timeBucket, count }
+    } catch (error) {
+      throw new Error(`Failed to fetch time buckets: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get photos in a specific time bucket
+   * @param {string} timeBucket - Time bucket identifier (e.g., "2026-01-01T00:00:00.000Z")
+   * @param {Object} options - Query options
+   * @returns {Promise<Array>} Array of assets in the bucket
+   */
+  /**
+   * Get photos in a specific time bucket
+   * @param {string} timeBucket - Time bucket identifier (e.g., "2026-01-01T00:00:00.000Z")
+   * @param {Object} options - Query options
+   * @returns {Promise<Array>} Array of assets in the bucket
+   */
+  async getTimelineBucket(timeBucket, options = {}) {
+    try {
+      const params = {
+        timeBucket,
+        visibility: 'timeline',
+        withPartners: options.withPartners ?? true,
+        withStacked: options.withStacked ?? true,
+      };
+      const response = await this.client.get('/timeline/bucket', { params });
+      const data = response.data;
+      
+      // Handle columnar response format (Structure of Arrays)
+      // The API returns data like { id: [...], isImage: [...], ... }
+      if (data && typeof data === 'object' && !Array.isArray(data) && Array.isArray(data.id)) {
+        const count = data.id.length;
+        const assets = [];
+        const keys = Object.keys(data);
+        
+        for (let i = 0; i < count; i++) {
+          const asset = {};
+          // Transpose data
+          for (const key of keys) {
+            if (Array.isArray(data[key])) {
+              asset[key] = data[key][i];
+            }
+          }
+          
+          // Map properties to match standard asset format
+          asset.type = asset.isImage ? 'IMAGE' : 'VIDEO';
+          
+          assets.push(asset);
+        }
+        return assets;
+      }
+      
+      // Fallback for standard array format
+      if (Array.isArray(data)) {
+        return data;
+      }
+      if (data && Array.isArray(data.assets)) {
+        return data.assets;
+      }
+      
+      console.warn(`Unexpected timeline bucket response format for ${timeBucket}`, Object.keys(data));
+      return [];
+    } catch (error) {
+      throw new Error(`Failed to fetch timeline bucket ${timeBucket}: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get all photos using timeline API (fetches all buckets)
+   * @param {Object} options - Query options
+   * @param {number} options.page - Page number for pagination (0-indexed)
+   * @param {number} options.size - Number of photos per page
    * @returns {Promise<Array>} Array of photo metadata
    */
   async getPhotos(options = {}) {
     try {
-      const assets = await this.getAssets(options);
-      // Filter to only include photos (type === 'IMAGE')
-      return assets.filter(asset => asset.type === 'IMAGE');
+      // Get all time buckets first
+      const buckets = await this.getTimeBuckets(options);
+      if (!Array.isArray(buckets)) {
+        console.warn('Unexpected time buckets response:', typeof buckets);
+        return [];
+      }
+      
+      const allPhotos = [];
+      
+      // Fetch photos from each bucket
+      for (const bucket of buckets) {
+        const assets = await this.getTimelineBucket(bucket.timeBucket, options);
+        // Debug logging for assets type
+        if (!Array.isArray(assets)) {
+          console.warn(`getTimelineBucket returned non-array result type: ${typeof assets} for bucket ${bucket.timeBucket}`);
+        } else {
+          // Filter to only include photos (type === 'IMAGE')
+          try {
+            const photos = assets.filter(asset => asset.type === 'IMAGE');
+            allPhotos.push(...photos);
+          } catch (err) {
+            console.error(`Error filtering assets for bucket ${bucket.timeBucket}:`, err);
+            console.log('Assets value:', typeof assets, Array.isArray(assets));
+          }
+        }
+      }
+      
+      // Apply pagination if requested
+      const page = options.page || 0;
+      const size = options.size || allPhotos.length;
+      const start = page * size;
+      const end = start + size;
+      
+      return allPhotos.slice(start, end);
     } catch (error) {
       throw new Error(`Failed to fetch photos: ${error.message}`);
     }

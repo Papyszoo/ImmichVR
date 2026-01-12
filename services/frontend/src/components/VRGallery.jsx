@@ -15,7 +15,7 @@ if (typeof window !== 'undefined') {
 /**
  * VRGallery - 3D viewer for a single photo with depth effect
  */
-function VRGallery({ media = [], selectedMedia, onClose, onNext, onPrevious }) {
+function VRGallery({ media = [], selectedMedia, onClose, onNext, onPrevious, loadingDepth = false }) {
   const currentMedia = selectedMedia || media[0];
 
   if (!currentMedia) {
@@ -28,6 +28,13 @@ function VRGallery({ media = [], selectedMedia, onClose, onNext, onPrevious }) {
       <button onClick={onClose} style={styles.backButton}>
         ← Back to Gallery
       </button>
+
+      {/* Depth loading indicator */}
+      {loadingDepth && (
+        <div style={styles.depthLoading}>
+          Generating 3D depth...
+        </div>
+      )}
 
       {/* VR Button */}
       <button onClick={() => xrStore.enterVR()} style={styles.vrButton}>
@@ -100,6 +107,19 @@ const styles = {
     border: 'none',
     borderRadius: '20px',
     cursor: 'pointer',
+  },
+  depthLoading: {
+    position: 'absolute',
+    top: '16px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: 100,
+    padding: '8px 16px',
+    fontSize: '13px',
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    color: '#aaa',
+    borderRadius: '20px',
+    backdropFilter: 'blur(8px)',
   },
   nav: {
     position: 'absolute',

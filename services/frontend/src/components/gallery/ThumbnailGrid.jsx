@@ -229,7 +229,7 @@ function ThumbnailGrid({
           photo={{ ...photo, depthUrl }}
           position={position}
           rotation={rotation}
-          onSelect={(p) => onSelectPhoto(p, position, rotation)}
+          onSelect={(p) => !settingsOpen && onSelectPhoto(p, position, rotation)}
           depthScale={depthScale}
           thumbnailHeight={thumbnailHeight}
           enableDepth={false} // Force disable depth for grid thumbnails

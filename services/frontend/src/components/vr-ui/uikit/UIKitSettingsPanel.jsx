@@ -128,6 +128,7 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
           padding={32}
           gap={24}
           // Removed borderRadius for stability
+          onClick={(e) => e.stopPropagation()}
         >
             {/* Header */}
             <Container

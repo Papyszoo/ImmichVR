@@ -13,6 +13,7 @@ function XRScrollController({
   totalHeight, 
   setSettingsOpen,
   isViewerMode = false,
+  paused = false,
   onNextPhoto,
   onPrevPhoto,
   onCloseViewer
@@ -141,7 +142,7 @@ function XRScrollController({
     }
     
     // GRID MODE: Apply scrolling with smoothing
-    if (Math.abs(totalInputY) > 0.1) {
+    if (!paused && Math.abs(totalInputY) > 0.1) {
       const smoothedInput = lastInputY.current * 0.3 + totalInputY * 0.7;
       lastInputY.current = smoothedInput;
       

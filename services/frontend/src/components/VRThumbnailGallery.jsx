@@ -168,6 +168,10 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
     if (selectedPhotoId) return; // Disable scroll in viewer mode
 
     const handleWheel = (e) => {
+      // If settings are open, allow default behavior (scrolling the modal) 
+      // and do NOT scroll the gallery.
+      if (settingsOpen) return;
+
       e.preventDefault();
       const scrollSpeed = 0.002;
       setScrollY(prev => {
@@ -186,10 +190,13 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
         container.removeEventListener('wheel', handleWheel);
       }
     };
-  }, [totalHeight, selectedPhotoId]);
+  }, [totalHeight, selectedPhotoId, settingsOpen]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Disable keyboard navigation if settings are open
+      if (settingsOpen) return;
+
       if (selectedPhotoId) {
         // Viewer navigation
         if (e.key === 'ArrowLeft') handlePrev();
@@ -208,7 +215,7 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [totalHeight, selectedPhotoId, handleNext, handlePrev, handleCloseViewer]);
+  }, [totalHeight, selectedPhotoId, handleNext, handlePrev, handleCloseViewer, settingsOpen]);
 
   // Cleanup depth URLs
   useEffect(() => {
@@ -330,6 +337,7 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
              totalHeight={totalHeight} 
              setSettingsOpen={setSettingsOpen}
              isViewerMode={!!selectedPhotoId}
+             paused={settingsOpen}
              onNextPhoto={handleNext}
              onPrevPhoto={handlePrev}
              onCloseViewer={handleCloseViewer}

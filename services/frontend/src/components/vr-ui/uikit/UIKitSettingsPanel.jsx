@@ -219,8 +219,8 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
                            <LabeledStepper
                             label="Gallery Width"
                             value={settings.galleryWidth}
-                            min={4}
-                            max={12}
+                            min={2}
+                            max={25}
                             step={0.5}
                             onChange={(v) => updateSetting('galleryWidth', v)}
                             formatValue={(v) => `${v.toFixed(1)}m`}
@@ -237,12 +237,13 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
                           <LabeledStepper
                             label="Wall Distance"
                             value={settings.wallDistance}
-                            min={2}
-                            max={6}
+                            min={0.5}
+                            max={15}
                             step={0.5}
                             onChange={(v) => updateSetting('wallDistance', v)}
                             formatValue={(v) => `${v.toFixed(1)}m`}
                           />
+                           {/* Wall Curvature Disabled - Needs Fix
                            <LabeledStepper
                             label="Wall Curvature"
                             value={settings.wallCurvature}
@@ -252,6 +253,7 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
                             onChange={(v) => updateSetting('wallCurvature', v)}
                             formatValue={(v) => v === 0 ? 'Flat' : `${(v * 100).toFixed(0)}%`}
                           />
+                          */}
                           <LabeledStepper
                             label="Spacing"
                             value={settings.gap}
@@ -275,8 +277,8 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
                             label="Depth Intensity"
                             value={settings.depthScale}
                             min={0}
-                            max={0.4}
-                            step={0.02}
+                            max={3.0}
+                            step={0.1}
                             onChange={(v) => updateSetting('depthScale', v)}
                             formatValue={(v) => `${(v * 100).toFixed(0)}%`}
                           />

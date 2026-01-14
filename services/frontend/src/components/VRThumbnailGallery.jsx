@@ -6,7 +6,7 @@ import { animated } from '@react-spring/three';
 // Extracted components
 import xrStore from './xr/xrStore';
 import XRScrollController from './xr/XRScrollController';
-import VRSettingsPanel from './vr-ui/VRSettingsPanel';
+import UIKitSettingsPanel from './vr-ui/uikit/UIKitSettingsPanel';
 import SettingsModal from './vr-ui/SettingsModal';
 import CameraController from './gallery/CameraController';
 import ThumbnailGrid from './gallery/ThumbnailGrid';
@@ -333,6 +333,14 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
              onNextPhoto={handleNext}
              onPrevPhoto={handlePrev}
              onCloseViewer={handleCloseViewer}
+          />
+
+          {/* UIKit Settings Panel (renders in 3D space) */}
+          <UIKitSettingsPanel
+            isOpen={settingsOpen}
+            onClose={() => setSettingsOpen(false)}
+            settings={settings}
+            onSettingsChange={setSettings}
           />
 
           {/* Render Grid if NO photo selected */}

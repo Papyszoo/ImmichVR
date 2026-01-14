@@ -1,7 +1,6 @@
 import React, { useMemo } from 'react';
 import { Text } from '@react-three/drei';
 import VRPhoto from '../VRPhoto';
-import VRSettingsPanel from '../vr-ui/VRSettingsPanel';
 
 /**
  * ThumbnailGrid - The 3D grid of depth thumbnails with flex-like row layout
@@ -237,14 +236,6 @@ function ThumbnailGrid({
           useSimpleParallax={useSimpleParallax}
         />
       ))}
-      
-      {/* VR Settings Panel */}
-      <VRSettingsPanel
-        isOpen={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        settings={settings}
-        onSettingsChange={setSettings}
-      />
     </group>
   );
 }

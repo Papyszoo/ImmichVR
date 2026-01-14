@@ -6,125 +6,11 @@ Refactor the frontend to provide a unified VR-first experience with a single Thr
 
 ---
 
-## Phase 1: Cleanup & Refactoring
-
-
-
-
----
-
-
-
----
-
-
-
----
-
-
-
----
-
 ## Phase 2: Core Features
 
-### 2.1 Implement Photo Selection Animation ✅
+### 2.1 Settings UI with @react-three/uikit ✅
 
-**Status:** Complete | **Priority:** High | **Complexity:** High
-
-When user selects a thumbnail:
-1. Animate selected thumbnail to center and scale up
-2. Animate adjacent thumbnails out of view (slide left/right + fade)
-3. Keep N previous and N next thumbnails visible on sides
-
-**Configuration:**
-```javascript
-const VIEWER_CONFIG = {
-  adjacentPhotosCount: 2,  // Show 2 prev + 2 next
-  animationDuration: 0.5,  // seconds
-  selectedPhotoScale: 3,   // Scale factor for selected photo
-  adjacentPhotoScale: 0.5, // Scale for side thumbnails
-};
-```
-
-**Animation implementation:**
-- Use `@react-spring/three` for smooth interpolation
-- Animate: position, scale, opacity
-- Selected photo moves to `[0, 1.6, -2]` (user eye level)
-- Side photos positioned at `[±1.5, 1.6, -2.5]`
-
-**Files to create/modify:**
-- `VRThumbnailGallery.jsx` - Add viewer state and animations
-- New: `usePhotoViewerAnimation.js` hook for animation logic
-
----
-
-### 2.2 Implement Parallax Depth Display ✅
-
-**Status:** Complete | **Priority:** High | **Complexity:** Medium
-
-When viewing a selected photo:
-1. Initially show flat image (while depth loads)
-2. When depth ready, animate transition to parallax depth
-
-**Parallax effect options:**
-- **Head tracking parallax:** Depth shifts based on head position
-- **Subtle oscillation:** Gentle automatic motion to show depth
-
-**Implementation:**
-```javascript
-// Shader-based parallax (recommended for performance)
-const depthMaterial = new THREE.ShaderMaterial({
-  uniforms: {
-    map: { value: texture },
-    depthMap: { value: depthTexture },
-    parallaxScale: { value: 0.1 },
-    viewDirection: { value: new THREE.Vector3() }
-  },
-  // Custom vertex/fragment shaders for parallax
-});
-```
-
-**Animation transition:**
-- Interpolate `parallaxScale` from 0 → target value
-- Duration: ~0.5s with easing
-
-**Files to modify:**
-- `DepthViewer3D.jsx` - Add parallax shader and animation
-- New: `shaders/parallaxDepth.glsl` (optional, can inline)
-
----
-
-### 2.3 VR Controller Navigation ✅
-
-**Status:** Complete | **Priority:** High | **Complexity:** Medium
-
-**Exit viewer (B button):**
-- Press B button to animate back to gallery grid
-- Reverse the selection animation
-
-**Navigate photos:**
-- Thumbstick left/right to switch to adjacent photos
-- Selected photo animates out, new selection animates in
-
-**Files to modify:**
-- `XRScrollController` in `VRThumbnailGallery.jsx`
-- Add button event listeners for B button
-
-```javascript
-// B button detection (right controller)
-const rightController = useXRInputSourceState('controller', 'right');
-useEffect(() => {
-  if (rightController?.gamepad?.buttons[5]?.pressed) {
-    exitViewerMode();
-  }
-}, [rightController?.gamepad?.buttons[5]?.pressed]);
-```
-
----
-
-### 2.4 Settings UI with @react-three/uikit ⏸️
-
-**Status:** Deferred (current HTML-based settings work well) | **Priority:** Low | **Complexity:** Medium
+**Status:** Complete | **Priority:** Medium | **Complexity:** Medium
 
 Replace current HTML overlay settings with native VR UI using `@react-three/uikit`.
 
@@ -164,34 +50,7 @@ function VRSettingsPanel({ settings, onChange }) {
 
 ---
 
-### 2.5 Preserve Aspect Ratio for Photos ✅
-
-**Status:** Complete | **Priority:** Medium | **Complexity:** Low
-
-Current issue: `DepthViewer3D` uses fixed 4:3 geometry causing stretched photos.
-
-**Fix:**
-```javascript
-const getPhotoGeometry = (photo) => {
-  const exif = photo.exifInfo;
-  const width = exif?.exifImageWidth || 4;
-  const height = exif?.exifImageHeight || 3;
-  const aspect = width / height;
-  
-  const maxSize = 3; // Max dimension
-  const geoWidth = aspect >= 1 ? maxSize : maxSize * aspect;
-  const geoHeight = aspect >= 1 ? maxSize / aspect : maxSize;
-  
-  return new THREE.PlaneGeometry(geoWidth, geoHeight, 64, 64);
-};
-```
-
-**Files to modify:**
-- `DepthViewer3D.jsx` - Dynamic geometry based on aspect ratio
-
----
-
-### 2.6 Implement Video Depth Anything
+### 2.2 Implement Video Depth Anything
 
 **Priority:** Medium (Post-Launch) | **Complexity:** High
 
@@ -212,7 +71,7 @@ Replace the removed frame-by-frame approach with true temporal consistency using
 
 ---
 
-### 2.7 Depth Model Selection
+### 2.3 Depth Model Selection
 
 **Priority:** Medium (Post-Launch) | **Complexity:** Medium
 
@@ -265,12 +124,25 @@ Gaussian Splatting provides higher quality 3D effects than parallax depth, but r
 
 This feature is **opt-in** - users enable it in settings, which triggers model download.
 
+#### Model Comparison & Selection
+Research into 2025/2026 state-of-the-art single-image 3D Gaussian Splatting models:
+
+| Model | Speed | Quality | Pros | Cons |
+|-------|-------|---------|------|------|
+| **Apple ml-sharp** | **<1s** | **High** | Ultra-fast, sharp geometry, metric scale, robust generalization. | Requires specific torch/cuda setup. |
+| **Splatter Image** | ~38 FPS | Medium | Extremely fast, single-pass. | Limited to frontal view (frustum), less detailed back-sides. |
+| **LGM (Large Gaussian Model)** | Slow | High | Good geometry, supports text-to-3D. | Heavy, multi-stage pipeline, slower initialization. |
+| **DiffSplat** | Slow | High | High consistency. | Slower generation due to diffusion process. |
+
+**Selected Solution: Apple ml-sharp**
+Reasoning: It offers the best balance of **sub-second generation speed** (critical for user experience) and **photorealistic quality**. Its ability to output standard `.ply` files makes it compatible with web viewers.
+
 #### Display Priority Chain
 
 When viewing a photo, display the best available representation:
 
 ```
-1. Gaussian Splat (.splat file) → Best quality, full 3D
+1. Gaussian Splat (.ply file)   → Best quality, full 3D, 6DOF
 2. Parallax Depth (depth map)   → Good quality, 2.5D effect  
 3. Original Photo               → Full resolution, flat
 4. Thumbnail                    → Fallback while loading
@@ -329,8 +201,9 @@ export const GAUSSIAN_SPLAT_CONFIG = {
 # services/ai/gaussian_splat_service.py
 
 class GaussianSplatService:
-    MODEL_NAME = "splatter-image"  # or similar single-image-to-splat model
-    MODEL_SIZE = "~3GB"
+class GaussianSplatService:
+    MODEL_NAME = "apple/ml-sharp"
+    MODEL_SIZE = "~2.5GB (cached)"
     
     def __init__(self):
         self.model = None
@@ -525,21 +398,14 @@ sequenceDiagram
 
 ```mermaid
 graph TD
-    subgraph Phase 1: Cleanup
-        A[1.1 Remove 2D Gallery] --> B[1.2 Remove Thumbnail Depth]
-        B --> C[1.3 Unify Single Scene]
-        C --> D[1.4 Black Background]
-        D --> E[1.5 Frontend Structure]
-        E --> F[1.6 Backend Structure]
-        F --> G[1.7 AI Structure]
+    subgraph Phase 2: Remaining Features
+        A[2.1 UIKit Settings] --> B[2.2 Video Depth Anything]
+        B --> C[2.3 Depth Model Selection]
     end
     
-    subgraph Phase 2: Features
-        G --> H[2.5 Fix Aspect Ratio]
-        H --> I[2.1 Selection Animation]
-        I --> J[2.2 Parallax Depth]
-        J --> K[2.3 Controller Navigation]
-        K --> L[2.4 UIKit Settings]
+    subgraph Phase 3: Future
+        C --> D[3.1-3.4 Album/People/Search/Memories]
+        D --> E[3.5 Gaussian Splatting]
     end
 ```
 

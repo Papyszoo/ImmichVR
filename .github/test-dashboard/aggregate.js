@@ -7,6 +7,13 @@ const FRONTEND_RESULTS = path.join(__dirname, '..', '..', 'temp', 'frontend', 't
 const E2E_RESULTS = path.join(__dirname, '..', '..', 'temp', 'e2e', 'test-results.json');
 const MAX_RUNS = 10;
 
+console.log('--- Debug Paths ---');
+console.log('__dirname:', __dirname);
+console.log('HISTORY_FILE:', HISTORY_FILE);
+console.log('FRONTEND_RESULTS:', FRONTEND_RESULTS);
+console.log('E2E_RESULTS:', E2E_RESULTS);
+console.log('-------------------');
+
 function loadHistory() {
   if (fs.existsSync(HISTORY_FILE)) {
     try {

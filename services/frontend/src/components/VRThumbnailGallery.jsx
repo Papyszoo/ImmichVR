@@ -7,6 +7,7 @@ import { animated } from '@react-spring/three';
 import xrStore from './xr/xrStore';
 import XRScrollController from './xr/XRScrollController';
 import UIKitSettingsPanel from './vr-ui/uikit/UIKitSettingsPanel';
+import Photo3DViewsPanel from './vr-ui/uikit/Photo3DViewsPanel';
 import SettingsModal from './vr-ui/SettingsModal';
 import CameraController from './gallery/CameraController';
 import ThumbnailGrid from './gallery/ThumbnailGrid';
@@ -15,6 +16,8 @@ import VRPhoto from './VRPhoto'; // Integrated for Viewer
 import styles from './gallery/galleryStyles';
 
 import { usePhotoViewerAnimation } from '../hooks/usePhotoViewerAnimation';
+import { generateDepthWithModel, getPhotoFiles, deletePhotoFile, getAIModels } from '../services/api';
+
 
 function ViewerItem({ photo, index, selectedIndex, onSelect }) {
   const isSelected = index === selectedIndex;
@@ -57,7 +60,9 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
     depthScale: 0.1,        // Depth displacement amount
     gap: 0.05,              // Gap between thumbnails
     wallDistance: 3,        // Distance from viewer
-    enableGridDepth: false  // Toggle depth in grid view
+    enableGridDepth: false, // Toggle depth in grid view
+    defaultDepthModel: 'small',  // Default model for auto-generate
+    autoGenerateOnEnter: false,  // Auto-generate depth on photo enter
   });
   const [scrollY, setScrollY] = useState(0);
   const [depthCache, setDepthCache] = useState({});
@@ -67,6 +72,100 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
   
   // Viewer State
   const [selectedPhotoId, setSelectedPhotoId] = useState(initialSelectedId);
+  
+  // Photo 3D Views Panel state
+  const [photoFiles, setPhotoFiles] = useState([]);
+  const [downloadedModels, setDownloadedModels] = useState(['small']); // Keep for compatibility if needed
+  const [availableModels, setAvailableModels] = useState([]); // Full model metadata
+  const [generatingModel, setGeneratingModel] = useState(null);
+  
+  // Auto-generate depth when entering photo view
+  useEffect(() => {
+    if (!selectedPhotoId || !settings.autoGenerateOnEnter) return;
+    
+    // Check if depth already exists in cache or in photo metadata (from backend)
+    const photo = photos.find(p => p.id === selectedPhotoId);
+    if (depthCache[selectedPhotoId] || photo?.depthUrl) return;
+    
+    console.log('Auto-generating depth for photo:', selectedPhotoId);
+    
+    const autoGenerate = async () => {
+      try {
+        const blob = await generateDepthWithModel(selectedPhotoId, settings.defaultDepthModel);
+        const url = URL.createObjectURL(blob);
+        setDepthCache(prev => ({ ...prev, [selectedPhotoId]: url }));
+      } catch (err) {
+        console.warn('Auto-generate depth failed:', err);
+      }
+    };
+    
+    autoGenerate();
+  }, [selectedPhotoId, settings.autoGenerateOnEnter, settings.defaultDepthModel, photos, depthCache]);
+  
+  // Fetch generated files when photo is selected
+  useEffect(() => {
+    if (!selectedPhotoId) {
+      setPhotoFiles([]);
+      return;
+    }
+    
+    getPhotoFiles(selectedPhotoId)
+      .then(data => setPhotoFiles(data.files || []))
+      .catch(err => console.warn('Failed to fetch photo files:', err));
+  }, [selectedPhotoId]);
+
+  // Fetch available models on mount
+  useEffect(() => {
+    getAIModels()
+      .then(data => {
+        const aiModels = data.models || [];
+        setAvailableModels(aiModels);
+        
+        const downloaded = aiModels
+          .filter(m => m.is_downloaded)
+          .map(m => m.key);
+        
+        if (downloaded.length > 0) {
+            setDownloadedModels(downloaded);
+        }
+      })
+      .catch(err => console.warn('Failed to fetch AI models:', err));
+  }, []);
+  
+  // Handle generate depth with specific model
+  const handleGenerateDepth = useCallback(async (modelKey) => {
+    if (!selectedPhotoId || generatingModel) return;
+    
+    setGeneratingModel(modelKey);
+    try {
+      const blob = await generateDepthWithModel(selectedPhotoId, modelKey);
+      const url = URL.createObjectURL(blob);
+      setDepthCache(prev => ({ ...prev, [selectedPhotoId]: url }));
+      
+      // Refresh files list
+      const data = await getPhotoFiles(selectedPhotoId);
+      setPhotoFiles(data.files || []);
+    } catch (err) {
+      console.error('Failed to generate depth:', err);
+    } finally {
+      setGeneratingModel(null);
+    }
+  }, [selectedPhotoId, generatingModel]);
+  
+  // Handle remove generated file
+  const handleRemoveFile = useCallback(async (modelKey, fileId) => {
+    if (!selectedPhotoId) return;
+    
+    try {
+      await deletePhotoFile(selectedPhotoId, fileId);
+      // Refresh files list
+      const data = await getPhotoFiles(selectedPhotoId);
+      setPhotoFiles(data.files || []);
+    } catch (err) {
+      console.error('Failed to delete file:', err);
+    }
+  }, [selectedPhotoId]);
+
   
   // Track VR session state
   useEffect(() => {
@@ -384,6 +483,18 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
                       />
                    );
                 })}
+                
+                {/* 3D Views Panel on right side of current photo */}
+                <Photo3DViewsPanel
+                  photoId={selectedPhotoId}
+                  generatedFiles={photoFiles.map(f => ({ modelKey: f.modelKey, id: f.id }))}
+                  downloadedModels={downloadedModels}
+                  models={availableModels}
+                  activeModel={null}
+                  onGenerate={handleGenerateDepth}
+                  onRemove={handleRemoveFile}
+                  position={[1.2, 1.6, -settings.wallDistance]}
+                />
              </group>
           )}
 

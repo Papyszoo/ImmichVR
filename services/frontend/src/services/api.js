@@ -132,4 +132,112 @@ export const checkHealth = async () => {
   return response.data;
 };
 
+// ============================================================================
+// SETTINGS API
+// ============================================================================
+
+/**
+ * Get user settings (default model, auto-generate preference)
+ */
+export const getSettings = async () => {
+  const response = await api.get('/settings');
+  return response.data;
+};
+
+/**
+ * Update user settings
+ * @param {Object} settings - Settings to update
+ */
+export const updateSettings = async (settings) => {
+  const response = await api.put('/settings', settings);
+  return response.data;
+};
+
+// ============================================================================
+// MODELS API
+// ============================================================================
+
+/**
+ * Get all AI models with their status from backend database
+ */
+export const getModels = async () => {
+  const response = await api.get('/settings/models');
+  return response.data;
+};
+
+/**
+ * Get AI models status from AI service (via backend proxy)
+ */
+export const getAIModels = async () => {
+  const response = await api.get('/settings/models/ai', { timeout: 10000 });
+  return response.data;
+};
+
+/**
+ * Load/switch to a specific model on AI service (via backend proxy)
+ * @param {string} modelKey - Model to load (small, base, large)
+ */
+export const loadModel = async (modelKey) => {
+  const response = await api.post(`/settings/models/${modelKey}/load`, {}, {
+    timeout: 300000, // 5 minutes for model download
+  });
+  return response.data;
+};
+
+/**
+ * Mark a model as downloaded in database
+ * @param {string} modelKey - Model key
+ */
+export const markModelDownloaded = async (modelKey) => {
+  const response = await api.post(`/settings/models/${modelKey}/download`);
+  return response.data;
+};
+
+/**
+ * Mark a model as not downloaded
+ * @param {string} modelKey - Model key
+ */
+export const deleteModel = async (modelKey) => {
+  const response = await api.delete(`/settings/models/${modelKey}`);
+  return response.data;
+};
+
+// ============================================================================
+// GENERATED FILES API
+// ============================================================================
+
+/**
+ * Get all generated files (depth maps) for a photo
+ * @param {string} photoId - The photo/asset ID
+ */
+export const getPhotoFiles = async (photoId) => {
+  const response = await api.get(`/photos/${photoId}/files`);
+  return response.data;
+};
+
+/**
+ * Delete a specific generated file
+ * @param {string} photoId - The photo/asset ID
+ * @param {string} fileId - The file ID to delete
+ */
+export const deletePhotoFile = async (photoId, fileId) => {
+  const response = await api.delete(`/photos/${photoId}/files/${fileId}`);
+  return response.data;
+};
+
+/**
+ * Generate depth for a photo with specific model
+ * @param {string} assetId - The asset ID
+ * @param {string} modelKey - Model to use (small, base, large)
+ * @returns {Promise<Blob>} - Depth map image blob
+ */
+export const generateDepthWithModel = async (assetId, modelKey = 'small') => {
+  const response = await api.post(`/immich/assets/${assetId}/depth?model=${modelKey}`, {}, {
+    responseType: 'blob',
+    timeout: 120000,
+  });
+  return response.data;
+};
+
 export default api;
+

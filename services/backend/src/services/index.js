@@ -2,6 +2,7 @@ const ImmichConnector = require('./immichConnector');
 const QueueManager = require('./queueManager');
 const APIGateway = require('./apiGateway');
 const ProcessingWorker = require('./processingWorker');
+const dbInit = require('./dbInit');
 const pool = require('../config/database');
 
 // Initialize API Gateway
@@ -37,6 +38,7 @@ module.exports = {
   queueManager,
   processingWorker,
   immichConnector,
+  dbInit,
   // Helper to get fresh connector if needed (though it's usually static config)
   getImmichConnector: () => immichConnector
 };

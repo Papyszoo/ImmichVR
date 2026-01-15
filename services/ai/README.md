@@ -1,9 +1,10 @@
 # ImmichVR AI Service - Depth Anything V2
 
-This microservice provides depth map generation using the Depth Anything V2 model from Hugging Face.
+This microservice provides depth map generation using the Depth Anything V2 models from Hugging Face.
 
 ## Features
 
+- **Multi-Model Support**: Choose between Small, Base, and Large model variants
 - **Depth Map Generation**: Convert 2D images to depth maps using state-of-the-art AI
 - **REST API**: Simple HTTP API for easy integration
 - **Dockerized**: Fully containerized for easy deployment
@@ -11,11 +12,15 @@ This microservice provides depth map generation using the Depth Anything V2 mode
 
 ## Model Information
 
-- **Model**: Depth Anything V2 Small
+| Model | Parameters | Memory | Speed | Use Case |
+|-------|------------|--------|-------|----------|
+| **Small** | 25M | ~100MB | Fastest | Previews, low-memory systems |
+| **Base** | 97M | ~400MB | Balanced | General use |
+| **Large** | 335M | ~1.3GB | Best quality | Maximum detail (hair, fences) |
+
 - **Source**: Hugging Face Transformers
-- **Model ID**: `depth-anything/Depth-Anything-V2-Small-hf`
-- **Task**: Monocular depth estimation
-- **Performance**: Optimized for balance between speed and accuracy
+- **Default**: Small (configurable via `DEPTH_MODEL` env var)
+
 
 ## API Endpoints
 

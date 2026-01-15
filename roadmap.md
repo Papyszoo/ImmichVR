@@ -10,43 +10,9 @@ Refactor the frontend to provide a unified VR-first experience with a single Thr
 
 ### 2.1 Settings UI with @react-three/uikit ✅
 
-**Status:** Complete | **Priority:** Medium | **Complexity:** Medium
+**Status:** Complete
 
-Replace current HTML overlay settings with native VR UI using `@react-three/uikit`.
-
-**Installation:**
-```bash
-npm install @react-three/uikit
-```
-
-**UI Components needed:**
-- Settings panel (floating in 3D space)
-- Sliders for: row width, thumbnail size, parallax intensity
-- Toggle switches for: date headers, animations
-- Close button
-
-**Files to create:**
-- `components/vr-ui/SettingsPanel.jsx` - uikit-based settings
-- `components/vr-ui/VRSlider.jsx` - Reusable slider component
-- `components/vr-ui/VRButton.jsx` - Reusable button component
-
-**Example usage:**
-```jsx
-import { Container, Text, Input } from '@react-three/uikit';
-
-function VRSettingsPanel({ settings, onChange }) {
-  return (
-    <Container flexDirection="column" gap={16} padding={24}>
-      <Text fontSize={24}>Settings</Text>
-      <VRSlider 
-        label="Row Width" 
-        value={settings.rowWidth} 
-        onChange={(v) => onChange({ rowWidth: v })} 
-      />
-    </Container>
-  );
-}
-```
+Replaced HTML overlay with native VR UI using `@react-three/uikit`.
 
 ---
 
@@ -56,38 +22,71 @@ function VRSettingsPanel({ settings, onChange }) {
 
 Replace the removed frame-by-frame approach with true temporal consistency using the `Video Depth Anything` model.
 
-**Model:** `depth-anything/Video-Depth-Anything-Small` (or Large)
-
-**Requirements:**
-- Model loading on demand (likely heavy memory usage)
-- Processing video in sequences/chunks to maintain temporal stability
-- Output: Side-by-side video or depth map video stream
-- UI: Progress indicator for video processing
-
-**Files to create:**
-- `services/ai/app/models/video_depth_model.py`
-- `services/ai/app/services/video_service.py` (Re-implement correctly)
-- `services/ai/app/routes/video.py`
-
 ---
 
-### 2.3 Depth Model Selection
+### 2.3 Depth Model Selection & Management (In Progress)
 
-**Priority:** Medium (Post-Launch) | **Complexity:** Medium
+**Status:** Partially Implemented - Refinement & Fixes Needed
+**Priority:** Critical
 
-Allow users to configure which depth model is used for generation via the settings UI.
+**Handoff Note:** basic plumbing (routes, settings UI component) is done. The core logic for tracking what is "downloaded" vs "loaded" is flawed and needs a specific fix. Extensibility needs to be moved to the database.
 
-**Options:**
-- **Depth Anything V2 Small:** Fast, low memory, good edges.
-- **Depth Anything V2 Base:** Balanced.
-- **Depth Anything V2 Large:** Best detail (hair, fences), slower.
+#### �️ Technical Implementation Plan
 
-**Implementation:**
-- Store preference in user settings (local storage or backend).
-- Pass model preference to AI service when requesting depth generation.
-- AI Service: Support loading/unloading models based on request or global config change.
+**1. Fix AI Service Download Logic (Priority: Critical)**
+The AI service currently reports a model as "downloaded" only if it is loaded in RAM. This causes the UI to show models as uninstalled when you switch away from them.
 
----
+*   **File:** `services/ai/app/models/depth_model.py`
+*   **Action:** Add a `check_downloaded(model_key)` method.
+*   **Implementation Detail:**
+    *   Use `huggingface_hub.scan_cache_dir` or check for existence of model weights file in the cache directory (`/root/.cache/huggingface/hub/...`).
+    *   **Do NOT** rely on `current_model` state.
+    *   Expose this boolean in the response of `GET /api/models` as `is_downloaded`.
+
+**2. Fix Frontend "Flip-Flop" Logic**
+*   **File:** `services/frontend/src/components/vr-ui/uikit/UIKitSettingsPanel.jsx`
+*   **Action:** Update the mapping logic in `useEffect`.
+*   **Logic Change:**
+    ```javascript
+    // Current (Wrong):
+    status: m.is_loaded ? 'downloaded' : 'not_downloaded'
+    
+    // Required (Correct):
+    status: m.is_downloaded ? 'downloaded' : 'not_downloaded',
+    isActive: m.is_loaded // Use this for a green "Active" dot, not for the download button state
+    ```
+
+**3. Fix 3D Views Panel Data Fetching**
+The floating panel on the right of the photo view (`Photo3DViewsPanel.jsx`) currently shows default dummy data because the parent component never fetches the real list.
+
+*   **File:** `services/frontend/src/components/VRThumbnailGallery.jsx`
+*   **Action:**
+    1.  Import `getAIModels` from `../services/api`.
+    2.  Add `useEffect` on mount to call `getAIModels()`.
+    3.  Update the `downloadedModels` state with the list of keys where `is_downloaded === true`.
+
+**4. Database-Driven Model Configuration (Extensibility)**
+*Requirement: Add "Giant" or "Experimental" models without editing code.*
+
+*   **Step A: Database Migration** (`services/db/migrations/05-enhanced-models.sql`)
+    *   Alter `ai_models` table.
+    *   Add columns: `display_name` (Target: 'Small'), `description` (Target: 'Fast...'), `params_size` (Target: '25M'), `vram_usage` (Target: '100MB').
+    *   Seed existing rows with this data.
+*   **Step B: Backend API** (`services/backend/src/routes/settings.routes.js`)
+    *   Update `GET /models` to SELECT these new columns.
+    *   Remove hardcoded `modelMetadata` object in the route.
+*   **Step C: Frontend** (`UIKitSettingsPanel.jsx`)
+    *   Remove `const MODEL_INFO = { ... }`.
+    *   Use the data from the API response directly to render the model cards.
+
+#### Completed Components ✅
+*   [x] Database Schema (`ai_models`, `user_settings`) initial version
+*   [x] Backend Proxy Routes (`/api/settings/models/ai`, `/load`)
+*   [x] API Service Routes (List, Load, Unload) basic structure
+*   [x] Frontend Settings UI (Visual Structure)
+*   [x] 3D Views Panel (Visual Component)
+
+
 
 ## Phase 3: Future Features (Post-MVP)
 

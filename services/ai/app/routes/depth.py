@@ -3,17 +3,25 @@ from flask import Blueprint, request, jsonify, send_file
 from PIL import Image
 import numpy as np
 from ..models.depth_model import model
-from ..services.depth_service import process_frame_depth
+from ..config import Config
 
 depth_bp = Blueprint('depth', __name__)
 
 @depth_bp.route('/api/depth', methods=['POST'])
 def process_depth():
-    if not model.is_loaded:
-        return jsonify({
-            "error": "Model not initialized", 
-            "message": "Depth estimation model is not available"
-        }), 503
+    """
+    Process an image and generate its depth map.
+    
+    Query params:
+        model: Optional model to use (small, base, large)
+        
+    Form data:
+        image: Image file to process
+        
+    Returns:
+        PNG depth map image
+    """
+    # Removed immediate is_loaded check to allow lazy loading in model.predict()
 
     if 'image' not in request.files:
          return jsonify({"error": "No image provided", "message": "Please upload 'image'"}), 400
@@ -21,6 +29,15 @@ def process_depth():
     file = request.files['image']
     if file.filename == '':
         return jsonify({"error": "Empty filename", "message": "No file selected"}), 400
+    
+    # Optional: specify which model to use
+    requested_model = request.args.get('model')
+    if requested_model:
+        if requested_model not in Config.AVAILABLE_MODELS:
+            return jsonify({
+                "error": "Invalid model",
+                "message": f"Unknown model '{requested_model}'. Available: {list(Config.AVAILABLE_MODELS.keys())}"
+            }), 400
         
     try:
         # Read image
@@ -28,25 +45,12 @@ def process_depth():
         image = Image.open(io.BytesIO(image_bytes))
         if image.mode != 'RGB':
             image = image.convert('RGB')
-            
-        # Process (using service usually, but simple enough to use model here or service wrapper)
-        # Using model directly for now as it returns PIL-compatible dict, 
-        # but service returns numpy array. Let's use service logic to keep consistent
-        # Wait, service consumes numpy array (cv2). 
-        # I'll convert PIL to numpy for service or use model directly since route has PIL.
-        # The service 'process_frame_depth' expects numpy layout.
-        # Let's use model directly here for simplicity as originally done, 
-        # or adapt to service.
-        # Original: model(image)["depth"] -> PIL -> send_file
         
-        result = model.predict(image)
-        depth_map = result["depth"] # PIL Image
+        # Generate depth map (will switch model if different from current)
+        result = model.predict(image, model_key=requested_model)
+        depth_map = result["depth"]
         
-        # Normalize logic is needed? Model output is raw depth? 
-        # Transformers pipeline 'depth-estimation' returns a PIL image of depth map usually visualized.
-        # But wait, original code did: depth_array = np.array(depth_map)... normalization ... Image.fromarray
-        # So yes, normalization is needed.
-        
+        # Normalize to 0-255 range
         depth_array = np.array(depth_map)
         depth_min = depth_array.min()
         depth_max = depth_array.max()
@@ -62,12 +66,18 @@ def process_depth():
         depth_image.save(img_io, 'PNG')
         img_io.seek(0)
         
-        return send_file(
+        response = send_file(
             img_io,
             mimetype='image/png',
             as_attachment=True,
             download_name=f"depth_{file.filename.rsplit('.', 1)[0]}.png"
         )
         
+        # Add model info to response headers
+        response.headers['X-Model-Used'] = model.current_model_key
+        
+        return response
+        
     except Exception as e:
         return jsonify({"error": "Processing failed", "message": str(e)}), 500
+

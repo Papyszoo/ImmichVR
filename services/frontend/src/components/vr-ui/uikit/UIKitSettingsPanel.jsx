@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Root, Container, Text } from '@react-three/uikit';
+import { getSettings, updateSettings, getModels, getAIModels, loadModel, markModelDownloaded } from '../../../services/api';
 
 const COLORS = {
     bg: '#000000', // Pure Black backing
@@ -16,29 +17,32 @@ const COLORS = {
     
     surfaceHighlight: '#374151', // Gray-700
     
-    danger: '#EF4444', 
+    danger: '#EF4444',
+    success: '#10B981',
 };
+
+// Model metadata is now fetched from the API
 
 // --- Components ---
 
-const UiButton = ({ text, onClick, active = false, width, height = 40, backgroundColor, ...props }) => {
+const UiButton = ({ text, onClick, active = false, width, height = 40, backgroundColor, disabled = false, ...props }) => {
   return (
     <Container
       width={width}
       height={height}
-      backgroundColor={backgroundColor || (active ? "#6B7280" : COLORS.surface)} 
-      hover={{ backgroundColor: "#9CA3AF" }} 
-      active={{ backgroundColor: "#1F2937" }} 
+      backgroundColor={disabled ? '#4B5563' : (backgroundColor || (active ? "#6B7280" : COLORS.surface))} 
+      hover={disabled ? {} : { backgroundColor: "#9CA3AF" }} 
+      active={disabled ? {} : { backgroundColor: "#1F2937" }} 
       alignItems="center"
       justifyContent="center"
-      cursor="pointer"
+      cursor={disabled ? "default" : "pointer"}
       borderRadius={6}
       onClick={(e) => {
-        if (onClick) onClick(e);
+        if (onClick && !disabled) onClick(e);
       }}
       {...props}
     >
-      <Text color="white" fontSize={20}>{text}</Text>
+      <Text color={disabled ? "#6B7280" : "white"} fontSize={20}>{text}</Text>
     </Container>
   );
 };
@@ -142,16 +146,106 @@ const SidebarItem = ({ label, isActive, onClick, icon }) => {
 
 function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
   const [activeTab, setActiveTab] = useState('layout');
+  const [models, setModels] = useState([]);
+  const [loadingModel, setLoadingModel] = useState(null);
+  const [currentLoadedModel, setCurrentLoadedModel] = useState(null);
 
+  const fetchModels = async () => {
+    try {
+      // Fetch AI service model status (what's actually loaded and on disk)
+      const data = await getAIModels();
+      setCurrentLoadedModel(data.current_model);
+      
+      const aiModels = data.models || [];
+      const mappedModels = aiModels.map(m => ({
+        ...m,
+        // Trust the is_downloaded flag from AI service (disk check)
+        status: m.is_downloaded ? 'downloaded' : 'not_downloaded',
+      }));
+      setModels(mappedModels);
+    } catch (err) {
+      console.warn('Failed to fetch AI models:', err);
+      // Fallback to database models if AI service fails
+      try {
+        const data = await getModels();
+        setModels(data.models || []);
+      } catch (e) {
+        console.warn('Failed to fetch models from DB:', e);
+      }
+    }
+  };
+
+  // Fetch settings and models when panel opens
   useEffect(() => {
-    if (isOpen) console.log("Settings Panel Open - Rendering Main Panel");
+    if (isOpen) {
+      console.log("Settings Panel Open - Fetching data");
+      
+      // Fetch user settings from backend
+      getSettings()
+        .then(data => {
+          onSettingsChange(prev => ({
+            ...prev,
+            defaultDepthModel: data.defaultDepthModel || 'small',
+            autoGenerateOnEnter: data.autoGenerateOnEnter || false,
+          }));
+        })
+        .catch(err => console.warn('Failed to fetch settings:', err));
+      
+      fetchModels();
+    }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const updateSetting = (key, value) => {
-    onSettingsChange({ ...settings, [key]: value });
+  // Get installed models for dropdown filtering
+  const installedModels = models.filter(m => m.status === 'downloaded');
+  
+  // Handle model activation (load into memory)
+  const handleActivateModel = async (modelKey) => {
+    setLoadingModel(modelKey);
+    try {
+      await loadModel(modelKey);
+      await fetchModels();
+    } catch (err) {
+      console.error('Failed to activate model:', err);
+    } finally {
+      setLoadingModel(null);
+    }
   };
+
+  const updateSetting = async (key, value) => {
+    // Update local state immediately
+    onSettingsChange({ ...settings, [key]: value });
+    
+    // Sync to backend
+    try {
+      await updateSettings({ [key === 'defaultDepthModel' ? 'defaultDepthModel' : 'autoGenerateOnEnter']: value });
+      
+      // Logic for auto-loading is now handled lazily or via idle timeout on backend
+      // We don't eagerly load anymore unless explicit 'Activate' button is clicked.
+
+    } catch (err) {
+      console.error('Failed to save setting:', err);
+    }
+  };
+
+  // Handle model download/load
+  const handleDownloadModel = async (modelKey) => {
+    setLoadingModel(modelKey);
+    try {
+      // Load the model on AI service (this downloads it)
+      await loadModel(modelKey);
+      // Mark as downloaded in database (keep DB in sync)
+      await markModelDownloaded(modelKey);
+      // Refresh models list from AI service to see updated status
+      await fetchModels();
+    } catch (err) {
+      console.error('Failed to download model:', err);
+    } finally {
+      setLoadingModel(null);
+    }
+  };
+
 
   return (
     <group position={[0, 1.6, -2.0]}>
@@ -180,6 +274,7 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
                 
                 <SidebarItem label="Layout" isActive={activeTab === 'layout'} onClick={() => setActiveTab('layout')} />
                 <SidebarItem label="Depth" isActive={activeTab === 'depth'} onClick={() => setActiveTab('depth')} />
+                <SidebarItem label="Models" isActive={activeTab === 'models'} onClick={() => setActiveTab('models')} />
                 <SidebarItem label="Controls" isActive={activeTab === 'controls'} onClick={() => setActiveTab('controls')} />
             </Container>
 
@@ -196,7 +291,7 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
                         {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
                      </Text>
                      <UiButton 
-                        text="✕" 
+                        text="X" 
                         onClick={onClose} 
                         width={44} 
                         height={44} 
@@ -266,7 +361,7 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
                         </>
                     )}
 
-                    {activeTab === 'depth' && (
+                     {activeTab === 'depth' && (
                         <>
                            <LabeledToggle
                             label="Enable Depth in Grid"
@@ -289,25 +384,131 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
                             borderRadius={12}
                           >
                             <Text fontSize={16} color={COLORS.textMuted} textAlign="center">
-                               Model: M8 (High Quality)<br/>
-                               Depth enhances 3D effect but costs performance.
+                               Current Model: {settings.defaultDepthModel || 'Small'}
                             </Text>
                           </Container>
+                        </>
+                    )}
+
+                    {activeTab === 'models' && (
+                        <>
+                          {/* Default Model Selection - Only installed models */}
+                          <Container flexDirection="column" gap={8} width="100%">
+                            <Text fontSize={20} color="#E5E7EB">Default Depth Model</Text>
+                            <Container flexDirection="row" gap={8}>
+                              {installedModels.length > 0 ? (
+                                installedModels.map((model) => (
+                                  <Container
+                                    key={model.key}
+                                    flexGrow={1}
+                                    height={40}
+                                    backgroundColor={settings.defaultDepthModel === model.key ? COLORS.primary : COLORS.surface}
+                                    hover={{ backgroundColor: settings.defaultDepthModel === model.key ? COLORS.primary : COLORS.surfaceHighlight }}
+                                    alignItems="center"
+                                    justifyContent="center"
+                                    borderRadius={6}
+                                    cursor="pointer"
+                                    onClick={() => updateSetting('defaultDepthModel', model.key)}
+                                  >
+                                    <Text color="white" fontSize={18}>
+                                      {model.name || model.key}
+                                    </Text>
+                                  </Container>
+                                ))
+                              ) : (
+                                <Text color={COLORS.textMuted} fontSize={16}>No models installed</Text>
+                              )}
+                            </Container>
+                          </Container>
+
+                          {/* Model Cards - All models */}
+                          <Container flexDirection="column" gap={12} width="100%">
+                            <Text fontSize={20} color="#E5E7EB">Available Models</Text>
+                            
+                              {models.map((model) => {
+                                const isInstalled = model.status === 'downloaded';
+                                const isLoading = loadingModel === model.key;
+                                
+                                return (
+                                  <Container
+                                    key={model.key}
+                                    backgroundColor={COLORS.surface}
+                                    padding={16}
+                                    borderRadius={12}
+                                    flexDirection="row"
+                                    justifyContent="space-between"
+                                    alignItems="center"
+                                  >
+                                    <Container flexDirection="column" gap={4}>
+                                      <Text color="#FFFFFF" fontSize={18}>{model.name} ({model.params})</Text>
+                                      <Text color="#9CA3AF" fontSize={14}>{model.memory} • {model.description || ''}</Text>
+                                    </Container>
+                                  
+                                  {isInstalled ? (
+                                    <Container flexDirection="row" gap={8}>
+                                      {model?.is_loaded ? (
+                                        <Container
+                                          backgroundColor={COLORS.primary}
+                                          paddingX={12}
+                                          paddingY={6}
+                                          borderRadius={6}
+                                        >
+                                          <Text color="#FFFFFF" fontSize={14}>Active</Text>
+                                        </Container>
+                                      ) : (
+                                        <UiButton 
+                                            text={isLoading ? "..." : "Activate"} 
+                                            width={90} 
+                                            height={32} 
+                                            disabled={isLoading}
+                                            onClick={() => handleActivateModel(model.key)}
+                                            backgroundColor={COLORS.surfaceHighlight}
+                                        />
+                                      )}
+                                      <Container
+                                        backgroundColor={COLORS.success}
+                                        paddingX={12}
+                                        paddingY={6}
+                                        borderRadius={6}
+                                      >
+                                        <Text color="#FFFFFF" fontSize={14}>Installed</Text>
+                                      </Container>
+                                    </Container>
+                                  ) : (
+                                    <UiButton 
+                                      text={isLoading ? "..." : "Download"} 
+                                      width={100} 
+                                      height={32} 
+                                      disabled={isLoading}
+                                      onClick={() => handleDownloadModel(model.key)}
+                                    />
+                                  )}
+                                </Container>
+                              );
+                            })}
+                          </Container>
+
+                          {/* Auto-generate Toggle */}
+                          <LabeledToggle
+                            label="Auto-generate depth on photo enter"
+                            checked={settings.autoGenerateOnEnter || false}
+                            onChange={(v) => updateSetting('autoGenerateOnEnter', v)}
+                          />
                         </>
                     )}
 
                     {activeTab === 'controls' && (
                         <Container flexDirection="column" gap={16}>
                           <Text fontSize={20} color="#F9FAFB">VR Controller</Text>
-                          <Text fontSize={18} color="#D1D5DB">• Thumbstick: Scroll</Text>
-                          <Text fontSize={18} color="#D1D5DB">• A/X: Toggle Menu</Text>
-                          <Text fontSize={18} color="#D1D5DB">• B/Y: Back / Close</Text>
+                          <Text fontSize={18} color="#D1D5DB">- Thumbstick: Scroll</Text>
+                          <Text fontSize={18} color="#D1D5DB">- A/X: Toggle Menu</Text>
+                          <Text fontSize={18} color="#D1D5DB">- B/Y: Back / Close</Text>
                           
                           <Container height={1} backgroundColor="rgba(255,255,255,0.1)" marginY={8} />
 
                           <Text fontSize={20} color="#F9FAFB">Keyboard</Text>
-                          <Text fontSize={18} color="#D1D5DB">• Arrows/WASD: Navigate</Text>
-                          <Text fontSize={18} color="#D1D5DB">• Escape: Close</Text>
+                          <Text fontSize={18} color="#D1D5DB">- Arrows/WASD: Navigate</Text>
+                          <Text fontSize={18} color="#D1D5DB">- Escape: Close</Text>
                         </Container>
                     )}
                 </Container>

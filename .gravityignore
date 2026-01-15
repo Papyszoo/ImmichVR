@@ -1,0 +1,37 @@
+# --- Dependencies (Major Token Bloat) ---
+**/node_modules/
+**/venv/
+**/.venv/
+**/__pycache__/
+**/*.pyc
+
+# --- Build Outputs ---
+**/dist/
+**/build/
+**/*.egg-info/
+
+# --- Large Configuration Files ---
+# These consume thousands of tokens but provide zero logic value
+**/package-lock.json
+**/yarn.lock
+**/pnpm-lock.yaml
+
+# --- Data & Storage ---
+# Ignored local docker volumes to prevent indexing uploads/db files
+data/
+**/uploads/
+**/depth_maps/
+**/db/data/
+
+# --- System & Logs ---
+.git/
+.DS_Store
+**/*.log
+**/*.mp4
+**/*.jpg
+**/*.png
+**/*.zip
+
+# --- Specific Service Exclusions ---
+# Ignore the generated SSL certs in nginx service
+services/nginx/ssl/

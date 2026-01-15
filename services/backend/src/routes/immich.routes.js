@@ -255,9 +255,10 @@ router.post('/assets/:assetId/depth', async (req, res) => {
     });
     
     const aiUrl = process.env.AI_SERVICE_URL || 'http://ai:5000';
-    console.log(`Sending to AI at ${aiUrl}/api/depth`);
+    const modelKey = req.query.model || 'small';
+    console.log(`Sending to AI at ${aiUrl}/api/depth?model=${modelKey}`);
     
-    const aiResponse = await axios.post(`${aiUrl}/api/depth`, formData, {
+    const aiResponse = await axios.post(`${aiUrl}/api/depth?model=${modelKey}`, formData, {
       headers: formData.getHeaders(),
       responseType: 'arraybuffer',
       timeout: 120000, // 2 minutes

@@ -1,5 +1,5 @@
 const app = require('./app');
-const { processingWorker } = require('./services');
+const { processingWorker, dbInit } = require('./services');
 const fs = require('fs').promises;
 
 const PORT = process.env.BACKEND_PORT || 3000;
@@ -21,8 +21,11 @@ fs.mkdir(uploadDir, { recursive: true }).catch(err => {
 });
 
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`Backend service running on port ${PORT}`);
+  
+  // Initialize DB Schema
+  await dbInit.ensureSchema();
 });
 
 // Build info

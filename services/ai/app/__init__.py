@@ -4,7 +4,7 @@ from .config import Config
 from .models.depth_model import model
 
 # Import blueprints
-from .routes import health_bp, depth_bp
+from .routes import health_bp, depth_bp, models_bp
 
 def create_app(config_class=Config):
     app = Flask(__name__)
@@ -17,9 +17,10 @@ def create_app(config_class=Config):
     # Register Blueprints
     app.register_blueprint(health_bp)
     app.register_blueprint(depth_bp)
+    app.register_blueprint(models_bp)
     
-    # Initialize Model on startup
-    logger.info("Initializing application and model...")
-    model.initialize()
+    # Initialize Model on startup with default model
+    logger.info(f"Initializing application with default model: {Config.DEFAULT_MODEL}")
+    model.initialize(Config.DEFAULT_MODEL)
         
     return app

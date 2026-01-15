@@ -5,4 +5,4 @@ playwright/.cache/
 
 # Dependencies
 node_modules/
-package-lock.json
+

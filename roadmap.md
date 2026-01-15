@@ -88,6 +88,19 @@ The floating panel on the right of the photo view (`Photo3DViewsPanel.jsx`) curr
 
 
 
+
+### 2.4 VR Consolidation & Cleanup
+**Priority:** Immediate
+
+- [ ] **VR Usability Assessment**
+  - [ ] Evaluate current 3D UI interaction models (raycasting vs direct touch).
+  - [ ] Identify friction points in photo navigation and setting adjustments.
+- [ ] **Redundant Feature Removal**
+  - [ ] Remove legacy DOM-based `SettingsModal`.
+  - [ ] Clean up unused 2D gallery routes and components.
+  - [ ] Strictly enforce Canvas-only rendering in all new components.
+
+
 ## Phase 3: Future Features (Post-MVP)
 
 ### 3.1 Album Support
@@ -216,6 +229,7 @@ class GaussianSplatService:
         await self.download_model()
         return True
     
+
     async def generate_splat(
         self, 
         image_path: Path, 

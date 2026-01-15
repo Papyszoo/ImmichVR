@@ -175,6 +175,28 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
     }
   };
 
+  // --- TEST BRIDGE ---
+  // Expose internal state and actions for Playwright E2E testing
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.__VR_UI_INTERNALS = {
+        state: {
+          activeTab,
+          models,
+          loadingModel,
+          settings,
+          isOpen
+        },
+        actions: {
+          setActiveTab,
+          downloadModel: handleDownloadModel,
+          activateModel: handleActivateModel,
+          updateSetting,
+        }
+      };
+    }
+  }, [activeTab, models, loadingModel, settings, isOpen]);
+
   // Fetch settings and models when panel opens
   useEffect(() => {
     if (isOpen) {
@@ -195,7 +217,7 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
     }
   }, [isOpen]);
 
-  if (!isOpen) return null;
+
 
   // Get installed models for dropdown filtering
   const installedModels = models.filter(m => m.status === 'downloaded');
@@ -246,6 +268,7 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
     }
   };
 
+  if (!isOpen) return null;
 
   return (
     <group position={[0, 1.6, -2.0]}>

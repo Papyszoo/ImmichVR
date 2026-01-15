@@ -5,7 +5,7 @@ test.describe('VR Gallery with Mock Immich API', () => {
     await page.goto('/');
     
     // Wait for the page to load
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Take screenshot of loaded page
     await page.screenshot({ path: 'test-results/gallery-page-loaded.png', fullPage: true });
@@ -24,7 +24,7 @@ test.describe('VR Gallery with Mock Immich API', () => {
     });
 
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Wait a bit for API calls to complete
     await page.waitForTimeout(2000);
@@ -39,13 +39,13 @@ test.describe('VR Gallery with Mock Immich API', () => {
 
   test('should display photos in the VR gallery', async ({ page }) => {
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
-    // Wait for the VR scene to initialize
-    await page.waitForTimeout(3000);
+    // Wait for the VR scene to initialize (canvas)
+    const canvas = page.locator('canvas');
+    await canvas.waitFor({ state: 'visible', timeout: 10000 });
     
     // Check for canvas element (Three.js renders to canvas)
-    const canvas = await page.locator('canvas');
     await expect(canvas).toBeVisible();
     
     // Take screenshot of VR gallery
@@ -66,7 +66,7 @@ test.describe('VR Gallery with Mock Immich API', () => {
     });
 
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Wait for thumbnails to load
     await page.waitForTimeout(5000);
@@ -91,7 +91,7 @@ test.describe('VR Gallery with Mock Immich API', () => {
   test('should connect to mock Immich API successfully', async ({ page }) => {
     // Navigate to a page that might show connection status
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Check console for errors
     const errors: string[] = [];

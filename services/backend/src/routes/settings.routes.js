@@ -322,6 +322,13 @@ router.delete('/models/:key', async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ error: `Model ${key} not found` });
     }
+
+    try {
+      const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://ai:5000';
+      await fetch(`${aiServiceUrl}/api/models/${key}`, { method: 'DELETE' });
+    } catch (e) {
+      console.warn('Failed to delete from AI service:', e);
+    }
     
     res.json({
       success: true,
@@ -335,4 +342,3 @@ router.delete('/models/:key', async (req, res) => {
 });
 
 module.exports = router;
-

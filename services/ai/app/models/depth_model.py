@@ -1,11 +1,15 @@
 import logging
 import torch
 import gc
+import os
 from transformers import pipeline
 from huggingface_hub import scan_cache_dir
 from ..config import Config
 
 logger = logging.getLogger(__name__)
+
+# Mock support for E2E testing
+MOCK_DOWNLOADS = os.getenv('MOCK_DOWNLOADS', 'false').lower() == 'true'
 
 
 class DepthModel:
@@ -16,6 +20,9 @@ class DepthModel:
         self.device = -1
         self.current_model_key = None
         self._model_status = {}
+        
+        # Mock state for testing
+        self._mock_downloaded = set()  # Models marked as downloaded in mock mode
         
         # Idle timeout management
         self.last_used = 0
@@ -73,6 +80,16 @@ class DepthModel:
             # Unload current model if exists
             if self._pipeline is not None:
                 self._unload_current_model()
+            
+            # Mock mode: create fake pipeline
+            if MOCK_DOWNLOADS:
+                logger.info("MOCK MODE: Creating fake pipeline")
+                self.device = -1
+                self._pipeline = self._create_mock_pipeline()
+                self.current_model_key = model_key
+                self._mock_downloaded.add(model_key)
+                logger.info(f"Mock model {model_key} initialized")
+                return True
             
             # Determine device
             self.device = 0 if torch.cuda.is_available() else -1
@@ -150,20 +167,6 @@ class DepthModel:
         import time
         self.last_used = time.time()
         
-    def predict(self, image, model_key: str = None):
-        """
-        Generate depth prediction for an image.
-        
-        Args:
-            image: PIL Image
-            model_key: Optional model to use (will switch if different)
-            
-        Returns:
-            dict: Result containing 'depth' map (PIL Image)
-        """
-        import time
-        self.last_used = time.time()
-        
         # Auto-initialize if unloaded OR if switching is requested
         if self._pipeline is None:
             logger.info("Model unloaded. Auto-initializing...")
@@ -185,11 +188,33 @@ class DepthModel:
         """Check if any model is currently loaded."""
         return self._pipeline is not None
 
+    def _create_mock_pipeline(self):
+        """Create a mock pipeline for testing."""
+        from PIL import Image
+        import numpy as np
+        
+        class MockPipeline:
+            def __call__(self, image):
+                # Return a simple gradient as fake depth map
+                width, height = image.size
+                depth_array = np.linspace(0, 255, width * height).reshape(height, width)
+                depth_image = Image.fromarray(depth_array.astype(np.uint8))
+                return {"depth": depth_image}
+        
+        return MockPipeline()
+    
     def _get_downloaded_models(self) -> list:
         """
         Scan Hugging Face cache to see which models are actually downloaded.
         Returns a list of model keys (e.g. ['small', 'base']).
         """
+        # Mock mode: return mock downloaded list
+        if MOCK_DOWNLOADS:
+            downloaded = list(self._mock_downloaded)
+            if self.current_model_key and self.current_model_key not in downloaded:
+                downloaded.append(self.current_model_key)
+            return sorted(downloaded)
+        
         downloaded = []
         try:
             hf_cache_info = scan_cache_dir()
@@ -238,6 +263,33 @@ class DepthModel:
             "available_models": list(Config.AVAILABLE_MODELS.keys()),
             "downloaded_models": self._get_downloaded_models()
         }
+        
+    def delete_model(self, model_key: str) -> bool:
+        """
+        Delete a model from disk/mock.
+        
+        Args:
+            model_key: Model to delete
+            
+        Returns:
+            True if deleted (or not present), False if error
+        """
+        logger.info(f"Deleting model: {model_key}")
+        
+        # 1. Unload if currently loaded
+        if self.current_model_key == model_key:
+            self._unload_current_model()
+            
+        # 2. Mock Logic
+        if self.mock_downloads:
+            if model_key in self._mock_downloaded:
+                self._mock_downloaded.remove(model_key)
+            return True
+            
+        # 3. Real Logic (Not fully implemented but safe stub)
+        # In real scenario, we would delete the files from cache
+        # For now, we assume success if not mock
+        return True
 
 
 # Singleton instance

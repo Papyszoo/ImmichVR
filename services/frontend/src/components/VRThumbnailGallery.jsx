@@ -8,7 +8,7 @@ import xrStore from './xr/xrStore';
 import XRScrollController from './xr/XRScrollController';
 import UIKitSettingsPanel from './vr-ui/uikit/UIKitSettingsPanel';
 import Photo3DViewsPanel from './vr-ui/uikit/Photo3DViewsPanel';
-import SettingsModal from './vr-ui/SettingsModal';
+
 import CameraController from './gallery/CameraController';
 import ThumbnailGrid from './gallery/ThumbnailGrid';
 import TimelineScrubber from './gallery/TimelineScrubber';
@@ -64,6 +64,7 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
     defaultDepthModel: 'small',  // Default model for auto-generate
     autoGenerateOnEnter: false,  // Auto-generate depth on photo enter
   });
+
   const [scrollY, setScrollY] = useState(0);
   const [depthCache, setDepthCache] = useState({});
   const [groupPositions, setGroupPositions] = useState({});
@@ -170,6 +171,11 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
   // Track VR session state
   useEffect(() => {
     const unsubscribe = xrStore.subscribe((state) => {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('force2d') === 'true') {
+         setIsInVR(false);
+         return;
+      }
       setIsInVR(state.session !== null);
     });
     return unsubscribe;
@@ -408,16 +414,6 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
             )
         }
       </div>
-
-      {/* Settings Modal */}
-      {!isInVR && (
-        <SettingsModal
-          isOpen={settingsOpen}
-          onClose={() => setSettingsOpen(false)}
-          settings={settings}
-          onSettingsChange={setSettings}
-        />
-      )}
 
       {/* 3D Canvas */}
       <Canvas 

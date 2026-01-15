@@ -43,6 +43,7 @@ services:
     container_name: immichvr-e2e-ai
     environment:
       AI_SERVICE_PORT: 5000
+      MOCK_DOWNLOADS: "true"
     networks:
       - immichvr-e2e-network
     depends_on:

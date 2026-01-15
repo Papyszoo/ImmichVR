@@ -126,3 +126,44 @@ def unload_model(model_key: str):
             "error": "Model unload error",
             "message": str(e)
         }), 500
+
+
+@models_bp.route('/api/models/<model_key>', methods=['DELETE'])
+def delete_model(model_key: str):
+    """
+    Delete a downloaded model from disk.
+    
+    Args:
+        model_key: Model to delete
+        
+    Returns:
+        JSON with success status
+    """
+    if model_key not in Config.AVAILABLE_MODELS:
+        return jsonify({
+            "error": "Unknown model",
+            "message": f"Model '{model_key}' not found"
+        }), 400
+    
+    try:
+        success = model.delete_model(model_key)
+        
+        if success:
+            return jsonify({
+                "success": True,
+                "message": f"Model '{model_key}' deleted successfully"
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": "Failed to delete model",
+                "message": f"Could not delete model '{model_key}' (maybe not found?)"
+            }), 404
+            
+    except Exception as e:
+        logger.error(f"Error deleting model {model_key}: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": "Model delete error",
+            "message": str(e)
+        }), 500

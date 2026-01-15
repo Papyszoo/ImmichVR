@@ -1,6 +1,21 @@
-# ImmichVR Depth Converter
+# ImmichVR
 
-A containerized VR photo depth conversion tool.
+A WebXR-enabled gallery that brings your self-hosted [Immich](https://immich.app/) library into Virtual Reality 🥽. 
+
+This project automatically generates depth maps for your photos using AI, creating a convincing 3D effect when viewed in a VR headset.
+
+## Features
+
+- 📸 **Immich Integration**: Seamlessly fetches photos from your self-hosted Immich instance.
+- 🤖 **AI Depth Generation**: Automatically creates depth maps for your images to enable 3D viewing.
+- ⚙️ **Model Selection**: Choose from different AI models for depth generation or use the default optimized settings.
+- 🕶️ **WebXR Support**: Works directly in the browser on standalone VR headsets (e.g., Quest 3) and PCVR.
+- 🎨 **VR Gallery**: unparalleled immersion with a dedicated VR interface.
+
+## Roadmap
+
+- [ ] **Gaussian Splatting**: Future support for generating and displaying 3D Gaussian Splats for even more realistic scene reconstruction.
+- [ ] **Advanced Model Configuration**: Fine-tune depth generation parameters.
 
 ## Architecture
 
@@ -90,55 +105,10 @@ Stop and remove volumes (clears database):
 docker compose down -v
 ```
 
-## Development
-
-### Rebuild a specific service
-
-```bash
-docker compose build <service-name>
-docker compose up -d <service-name>
-```
-
-Where `<service-name>` is one of: `db`, `ai`, `backend`, `frontend`
-
-### View service logs
-
-```bash
-docker compose logs -f <service-name>
-```
-
-### Access a service shell
-
-```bash
-docker compose exec <service-name> sh
-```
-
-## Services
-
-### Database (PostgreSQL)
-
-- **Container**: `immichvr-db`
-- **Image**: `postgres:16-alpine`
-- **Internal Network**: `immichvr-network`
-
-### AI Service (Python/Flask)
-
-- **Container**: `immichvr-ai`
-- **Build Context**: `./services/ai`
-- **Health Endpoint**: `GET /health`
-
-### Backend (Node.js/Express)
-
-- **Container**: `immichvr-backend`
-- **Build Context**: `./services/backend`
 - **Health Endpoint**: `GET /health`
 - **Immich Integration**: Optional connection to Immich instance for fetching media
 
 For Immich integration documentation, see [IMMICH_CONNECTOR.md](services/backend/IMMICH_CONNECTOR.md).
-
-For media fetch logic (thumbnails & full-resolution), see [MEDIA_VERSIONS.md](MEDIA_VERSIONS.md).
-
-For experimental video depth map support, see [VIDEO_DEPTH_SUPPORT.md](VIDEO_DEPTH_SUPPORT.md).
 
 ### Frontend (React/Nginx)
 

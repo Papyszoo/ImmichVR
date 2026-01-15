@@ -128,13 +128,20 @@ jobs:
       
       - name: Restore existing history
         run: |
+          echo "Files in root before restore:"
+          ls -la
           if [ -f history.json ]; then
+            echo "Found history.json in root, copying..."
             cp history.json .github/test-dashboard/history.json
+          else
+            echo "No history.json found in root"
           fi
       
       - name: Aggregate test results
         run: |
           cd .github/test-dashboard
+          echo "Files in .github/test-dashboard:"
+          ls -la
           node aggregate.js
       
       - name: Copy dashboard files to root

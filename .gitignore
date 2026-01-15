@@ -35,7 +35,7 @@ tmp/
 temp/
 
 # Local Data
-data/
+/data/
 
 # Test results
 test-results/

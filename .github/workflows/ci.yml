@@ -56,9 +56,9 @@ jobs:
       - name: Start Docker services
         working-directory: tests/e2e
         run: |
-          docker-compose -f docker-compose.e2e.yml up -d
+          docker compose -f docker-compose.e2e.yml up -d
           echo "Waiting for services to be healthy..."
-          timeout 300 bash -c 'until docker-compose -f docker-compose.e2e.yml ps | grep -q "healthy"; do sleep 5; done'
+          timeout 300 bash -c 'until docker compose -f docker-compose.e2e.yml ps | grep -q "healthy"; do sleep 5; done'
       
       - name: Install Playwright dependencies
         working-directory: tests/e2e
@@ -83,7 +83,7 @@ jobs:
       - name: Stop Docker services
         if: always()
         working-directory: tests/e2e
-        run: docker-compose -f docker-compose.e2e.yml down -v
+        run: docker compose -f docker-compose.e2e.yml down -v
 
   deploy-reports:
     name: Deploy Test Reports to GitHub Pages

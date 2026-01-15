@@ -126,6 +126,12 @@ jobs:
           git fetch origin main
           git checkout origin/main -- .github/test-dashboard
       
+      - name: Restore existing history
+        run: |
+          if [ -f history.json ]; then
+            cp history.json .github/test-dashboard/history.json
+          fi
+      
       - name: Aggregate test results
         run: |
           cd .github/test-dashboard

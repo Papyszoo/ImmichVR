@@ -116,8 +116,44 @@ class DepthModel:
             self._pipeline = None
             self.current_model_key = None
             return False
+    def download_model(self, model_key: str) -> bool:
+        """
+        Download a model's files without loading it into memory.
+        
+        Args:
+            model_key: Model to download
+            
+        Returns:
+            bool: True if download succeeded
+        """
+        if model_key not in Config.AVAILABLE_MODELS:
+            logger.error(f"Unknown model key: {model_key}")
+            return False
+            
+        # Mock mode
+        if MOCK_DOWNLOADS:
+            logger.info(f"MOCK MODE: Downloading {model_key}")
+            self._mock_downloaded.add(model_key)
+            return True
+            
+        try:
+            logger.info(f"Downloading model files for {model_key}...")
+            model_config = Config.AVAILABLE_MODELS[model_key]
+            repo_id = model_config["id"]
+            
+            # snapshot_download will cache files to disk
+            scan_cache_dir() # Refresh cache info before check? Not strictly needed but good practice
+            
+            from huggingface_hub import snapshot_download
+            snapshot_download(repo_id=repo_id)
+            
+            logger.info(f"Model {model_key} downloaded successfully")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to download model {model_key}: {str(e)}")
+            return False
 
-    def _unload_current_model(self):
         """Unload current model and free memory."""
         if self._pipeline is not None:
             logger.info(f"Unloading model: {self.current_model_key}")

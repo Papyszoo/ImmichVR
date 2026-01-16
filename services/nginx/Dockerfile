@@ -1,7 +1,7 @@
 FROM nginx:alpine
 
-# Install openssl for certificate generation
-RUN apk add --no-cache openssl
+# Install openssl for certificate generation and dos2unix for line ending fixes
+RUN apk add --no-cache openssl dos2unix
 
 # Create SSL directory
 RUN mkdir -p /etc/nginx/ssl
@@ -11,7 +11,7 @@ COPY nginx.conf /etc/nginx/nginx.conf
 
 # Copy entrypoint script
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN dos2unix /entrypoint.sh && chmod +x /entrypoint.sh
 
 EXPOSE 443
 

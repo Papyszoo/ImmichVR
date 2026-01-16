@@ -28,10 +28,11 @@ const VERSION_SUFFIXES = {
 };
 
 class ProcessingWorker {
-  constructor(queueManager, apiGateway, pool) {
+  constructor(queueManager, apiGateway, pool, modelManager) {
     this.queueManager = queueManager;
     this.apiGateway = apiGateway;
     this.pool = pool;
+    this.modelManager = modelManager;
     this.isProcessing = false;
     this.processingInterval = null;
   }
@@ -96,6 +97,32 @@ class ProcessingWorker {
         if (queueItem.media_type === 'video' && !ENABLE_EXPERIMENTAL_VIDEO) {
           throw new Error('Video processing is experimental and currently disabled. Set ENABLE_EXPERIMENTAL_VIDEO=true to enable.');
         }
+
+        // --- MODEL MANAGEMENT INTEGRATION ---
+        // Ensure the required model is loaded before processing
+        // For background processing, we assume 'auto' trigger unless specified otherwise
+        // Use default model (small) or user preference if we had access to it here (we can query if needed)
+        // For MVP, just use 'small' or what's configured in env/constants.
+        // Actually, let's query the global setting or assume 'small' for now to be safe.
+        // Better: Query user_settings table for default model.
+        
+        let targetModel = DEFAULT_MODEL_VERSION; 
+        try {
+           const settingsRes = await this.pool.query('SELECT default_depth_model FROM user_settings WHERE user_id IS NULL');
+           if (settingsRes.rows.length > 0) {
+               targetModel = settingsRes.rows[0].default_depth_model;
+           }
+        } catch (err) {
+            console.warn('Failed to fetch default model preference, using default:', targetModel);
+        }
+
+        if (this.modelManager) {
+            // "Entering a photo" triggers queue, which triggers this.
+            // If this is a BACKGROUND job (e.g. batch), 'auto' is appropriate.
+            // If this was triggered by user "Enter VR", it's also 'auto' in 30min sense.
+            await this.modelManager.ensureModelLoaded(targetModel, 'auto');
+        }
+        // ------------------------------------
 
         // Get media item details to check for thumbnail path
         const mediaResult = await this.pool.query(
@@ -176,6 +203,12 @@ class ProcessingWorker {
           processingErrors.push(`full_resolution: ${fullResError.message}`);
         }
         }
+
+        // --- MODEL ACTIVITY REGISTRATION ---
+        if (this.modelManager) {
+            await this.modelManager.registerActivity('auto');
+        }
+        // -----------------------------------
 
         // If no versions were successfully processed, fail the queue item
         if (processedVersions.length === 0) {

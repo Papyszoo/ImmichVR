@@ -290,36 +290,10 @@ function VRPhoto({
       const url = URL.createObjectURL(photo.depthBlob);
       setDepthUrl(url);
       return () => URL.revokeObjectURL(url);
-    } else if (enableDepth && !depthUrl) {
-      // Fetch depth if enabled and not already present
-      // Only fetch depth if full quality is requested/loaded to adhere to "no depth on thumbnails" policy strictness?
-      // User said "removed depth from thumbnails". So we should PROBABLY strictly check enableDepth OR ensure enableDepth is disabled for thumbnails.
-      
-      let isActive = true;
-      
-      const fetchDepth = async () => {
-        try {
-          const { generateImmichDepth } = await import('../services/api');
-          if (!isActive) return;
-          
-          const blob = await generateImmichDepth(photo.id);
-          if (!isActive) return;
-          
-          const url = URL.createObjectURL(blob);
-          setDepthUrl(url);
-        } catch (err) {
-          console.warn(`Failed to load depth for ${photo.id}`, err);
-        }
-      };
-      
-      fetchDepth();
-      return () => { isActive = false; };
     } else {
-      if (!enableDepth && !photo.depthUrl && !photo.depthBlob) {
         setDepthUrl(null);
-      }
     }
-  }, [photo.depthUrl, photo.depthBlob, enableDepth, photo.id]);
+  }, [photo.depthUrl, photo.depthBlob, photo.id]);
 
   const handleClick = (e) => {
     e.stopPropagation();

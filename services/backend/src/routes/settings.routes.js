@@ -57,11 +57,9 @@ router.put('/', async (req, res) => {
   try {
     // Validate model key if provided
     if (defaultDepthModel) {
-      const validModels = ['small', 'base', 'large'];
-      if (!validModels.includes(defaultDepthModel)) {
-        return res.status(400).json({ 
-          error: `Invalid model: ${defaultDepthModel}. Must be one of: ${validModels.join(', ')}` 
-        });
+      const modelCheck = await pool.query('SELECT 1 FROM ai_models WHERE model_key = $1', [defaultDepthModel]);
+      if (modelCheck.rows.length === 0) {
+          return res.status(400).json({ error: `Invalid model: ${defaultDepthModel}` });
       }
     }
     
@@ -150,6 +148,16 @@ router.get('/models', async (req, res) => {
         END
     `);
     
+    // Get currently loaded model from AI service
+    const { apiGateway } = require('../services');
+    let loadedModelKey = null;
+    try {
+        const loadedInfo = await apiGateway.getLoadedModel();
+        loadedModelKey = loadedInfo.current_model;
+    } catch (e) {
+        console.warn('Failed to get loaded model status:', e.message);
+    }
+    
     const models = result.rows.map(row => ({
       key: row.model_key,
       status: row.status,
@@ -161,6 +169,8 @@ router.get('/models', async (req, res) => {
       downloadProgress: row.download_progress,
       fileSizeBytes: row.file_size_bytes,
       downloadedAt: row.downloaded_at,
+      isActive: row.model_key === loadedModelKey, // Dynamic active state
+      is_loaded: row.model_key === loadedModelKey // Frontend expects this name
     }));
     
     res.json({ models });
@@ -240,32 +250,16 @@ router.post('/models/:key/load', async (req, res) => {
   const { key } = req.params;
   
   try {
-    const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://ai:5000';
+    const { modelManager } = require('../services');
     
-    // Call AI service to load the model
-    const response = await fetch(`${aiServiceUrl}/api/models/${key}/load`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    });
-    
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || `AI service returned ${response.status}`);
-    }
-    
-    const aiResult = await response.json();
-    
-    // Update database to mark as downloaded
-    await pool.query(`
-      UPDATE ai_models
-      SET status = 'downloaded', downloaded_at = NOW()
-      WHERE model_key = $1
-    `, [key]);
+    // Use ModelManager to handle loading and timeouts
+    // Since this is a manual user action ("Activate"), use 'manual' trigger (10m timeout)
+    await modelManager.ensureModelLoaded(key, 'manual');
     
     res.json({
       success: true,
       message: `Model '${key}' loaded successfully`,
-      currentModel: aiResult.current_model,
+      currentModel: key,
     });
     
   } catch (error) {
@@ -282,6 +276,12 @@ router.post('/models/:key/download', async (req, res) => {
   const { key } = req.params;
   
   try {
+    const { apiGateway } = require('../services');
+    
+    // Call AI service to download (without loading)
+    await apiGateway.downloadModel(key);
+    
+    // Update DB status
     const result = await pool.query(`
       UPDATE ai_models
       SET status = 'downloaded', downloaded_at = NOW()
@@ -299,8 +299,8 @@ router.post('/models/:key/download', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('Error updating model status:', error);
-    res.status(500).json({ error: 'Failed to update model status' });
+    console.error('Error downloading model:', error);
+    res.status(500).json({ error: 'Failed to download model', message: error.message });
   }
 });
 
@@ -339,6 +339,16 @@ router.delete('/models/:key', async (req, res) => {
     console.error('Error updating model status:', error);
     res.status(500).json({ error: 'Failed to update model status' });
   }
+});
+
+// --- TEST HELPER ROUTES ---
+// Available for testing
+router.post('/test/timeouts', (req, res) => {
+    console.log('[SettingsRoutes] POST /test/timeouts hit');
+    const { auto, manual } = req.body;
+    const { modelManager } = require('../services');
+    modelManager.setTimeouts(auto, manual);
+    res.json({ success: true, timeouts: modelManager.TIMEOUTS });
 });
 
 module.exports = router;

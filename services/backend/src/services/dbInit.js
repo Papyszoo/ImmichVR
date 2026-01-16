@@ -50,6 +50,33 @@ async function ensureSchema() {
         )
       `);
       
+      // 0.5. Check for depth_map_cache model_key
+      const depthCacheCols = await client.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name='depth_map_cache' AND column_name='model_key'
+      `);
+      
+      if (depthCacheCols.rows.length === 0) {
+        console.log('Applying migration: Multi-Model Support for depth_map_cache...');
+        
+        // Add model_key column
+        await client.query(`ALTER TABLE depth_map_cache ADD COLUMN IF NOT EXISTS model_key VARCHAR(50) DEFAULT 'large'`);
+        
+        // Drop old constraint
+        await client.query(`ALTER TABLE depth_map_cache DROP CONSTRAINT IF EXISTS depth_map_cache_media_item_version_unique`);
+        
+        // Add new constraint
+        await client.query(`
+          ALTER TABLE depth_map_cache 
+          ADD CONSTRAINT depth_map_cache_media_version_model_unique 
+          UNIQUE (media_item_id, version_type, model_key)
+        `);
+        
+        // Add index
+        await client.query(`CREATE INDEX IF NOT EXISTS idx_depth_map_cache_model_key ON depth_map_cache(model_key)`);
+      }
+
       // Add columns
       await client.query(`ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS name VARCHAR(100)`);
       await client.query(`ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS params VARCHAR(50)`);

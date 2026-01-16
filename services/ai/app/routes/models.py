@@ -96,7 +96,46 @@ def load_model(model_key: str):
         }), 500
 
 
-@models_bp.route('/api/models/<model_key>/unload', methods=['POST'])
+@models_bp.route('/api/models/<model_key>/download', methods=['POST'])
+def download_model(model_key: str):
+    """
+    Download a model to disk without loading it.
+    
+    Args:
+        model_key: Model to download
+        
+    Returns:
+        JSON with success status
+    """
+    if model_key not in Config.AVAILABLE_MODELS:
+        return jsonify({
+            "error": "Unknown model",
+            "message": f"Model '{model_key}' not found"
+        }), 400
+    
+    try:
+        success = model.download_model(model_key)
+        
+        if success:
+            return jsonify({
+                "success": True,
+                "message": f"Model '{model_key}' downloaded successfully"
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": "Failed to download model",
+                "message": f"Could not download model '{model_key}'"
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error downloading model {model_key}: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": "Model download error",
+            "message": str(e)
+        }), 500
+
 def unload_model(model_key: str):
     """
     Unload a specific model (if it's currently loaded).

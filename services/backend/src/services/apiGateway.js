@@ -182,6 +182,74 @@ class APIGateway {
   }
 
   /**
+   * Unload the current model from memory
+   */
+  async unloadModel() {
+    try {
+      const response = await this.aiClient.post('/api/models/unload');
+      if (response.status !== 200) {
+        throw new Error(`AI service returned status ${response.status}`);
+      }
+      return response.data;
+    } catch (error) {
+      // If endpoint doesn't exist yet on AI service, we might get 404, which is expected during transition
+      if (error.response && error.response.status === 404) {
+        console.warn('AI service does not support unload yet (404)');
+        return { success: false, message: 'Not implemented on AI service' };
+      }
+      throw new Error(`Failed to unload model: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get currently loaded model from AI service
+   */
+  async getLoadedModel() {
+    try {
+      const response = await this.aiClient.get('/api/models/current');
+      if (response.status !== 200) {
+        throw new Error(`AI service returned status ${response.status}`);
+      }
+      return response.data; // Expected: { current_model: 'small' | null }
+    } catch (error) {
+      throw new Error(`Failed to get loaded model: ${error.message}`);
+    }
+  }
+
+  /**
+   * Download a model (disk only, no load)
+   */
+  async downloadModel(modelKey) {
+     try {
+      const response = await this.aiClient.post(`/api/models/${modelKey}/download`);
+      if (response.status !== 200) {
+        throw new Error(`AI service returned status ${response.status}`);
+      }
+      return response.data;
+    } catch (error) {
+        // Fallback for older AI service versions? 
+        // No, we want to fail if download-only isn't supported, 
+        // otherwise we regress to "loading" which is what we want to avoid.
+       throw new Error(`Failed to download model ${modelKey}: ${error.message}`);
+    }
+  }
+
+  /**
+   * Load a specific model
+   */
+  async loadModel(modelKey) {
+     try {
+      const response = await this.aiClient.post(`/api/models/${modelKey}/load`);
+      if (response.status !== 200) {
+        throw new Error(`AI service returned status ${response.status}`);
+      }
+      return response.data;
+    } catch (error) {
+       throw new Error(`Failed to load model ${modelKey}: ${error.message}`);
+    }
+  }
+
+  /**
    * Route request to AI service (generic proxy)
    */
   async proxyToAIService(path, method = 'GET', data = null, headers = {}) {

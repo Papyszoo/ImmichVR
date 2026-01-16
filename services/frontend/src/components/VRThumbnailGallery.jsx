@@ -16,7 +16,7 @@ import VRPhoto from './VRPhoto'; // Integrated for Viewer
 import styles from './gallery/galleryStyles';
 
 import { usePhotoViewerAnimation } from '../hooks/usePhotoViewerAnimation';
-import { generateDepthWithModel, getPhotoFiles, deletePhotoFile, getAIModels } from '../services/api';
+import { generateDepthWithModel, getPhotoFiles, deletePhotoFile, getAIModels, getSettings } from '../services/api';
 
 
 function ViewerItem({ photo, index, selectedIndex, onSelect }) {
@@ -103,6 +103,19 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
     autoGenerate();
   }, [selectedPhotoId, settings.autoGenerateOnEnter, settings.defaultDepthModel, photos, depthCache]);
   
+  // Fetch settings on mount
+  useEffect(() => {
+    getSettings()
+      .then(data => {
+        setSettings(prev => ({
+          ...prev,
+          defaultDepthModel: data.defaultDepthModel || prev.defaultDepthModel,
+          autoGenerateOnEnter: data.autoGenerateOnEnter !== undefined ? data.autoGenerateOnEnter : prev.autoGenerateOnEnter,
+        }));
+      })
+      .catch(err => console.warn('Failed to fetch user settings:', err));
+  }, []);
+
   // Fetch generated files when photo is selected
   useEffect(() => {
     if (!selectedPhotoId) {

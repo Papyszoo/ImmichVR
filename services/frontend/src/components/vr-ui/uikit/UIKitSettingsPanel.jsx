@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Root, Container, Text } from '@react-three/uikit';
-import { getSettings, updateSettings, getModels, getAIModels, loadModel, markModelDownloaded } from '../../../services/api';
+import { getSettings, updateSettings, getModels, getAIModels, loadModel, markModelDownloaded, downloadModel } from '../../../services/api';
 
 const COLORS = {
     bg: '#000000', // Pure Black backing
@@ -255,10 +255,11 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
   const handleDownloadModel = async (modelKey) => {
     setLoadingModel(modelKey);
     try {
-      // Load the model on AI service (this downloads it)
-      await loadModel(modelKey);
-      // Mark as downloaded in database (keep DB in sync)
-      await markModelDownloaded(modelKey);
+      // Download model (disk only, no activation)
+      await downloadModel(modelKey);
+      // Mark as downloaded in database (keep DB in sync) - backend might do this already in downloadModel but good to ensure
+      // await markModelDownloaded(modelKey); // The new download endpoint updates DB too, so this might be redundant but harmless if idempotent. 
+      // Actually backend downloadModel updates DB. Remove explicit mark if api.downloadModel calls backend.
       // Refresh models list from AI service to see updated status
       await fetchModels();
     } catch (err) {

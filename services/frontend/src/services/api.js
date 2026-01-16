@@ -185,12 +185,22 @@ export const loadModel = async (modelKey) => {
 };
 
 /**
- * Mark a model as downloaded in database
+ * Mark a model as downloaded in database (Legacy/Fallback)
  * @param {string} modelKey - Model key
  */
 export const markModelDownloaded = async (modelKey) => {
   const response = await api.post(`/settings/models/${modelKey}/download`);
   return response.data;
+};
+
+/**
+ * Download a model (Disk only, no activation)
+ * @param {string} modelKey - Model key
+ */
+export const downloadModel = async (modelKey) => {
+    // This endpoint now handles the actual download process on backend+AI service
+    const response = await api.post(`/settings/models/${modelKey}/download`);
+    return response.data;
 };
 
 /**

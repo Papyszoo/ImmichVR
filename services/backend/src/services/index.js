@@ -14,8 +14,13 @@ console.log(`API Gateway initialized with AI service URL: ${aiServiceUrl}`);
 const queueManager = new QueueManager(pool);
 console.log('Queue Manager initialized');
 
+// Initialize Model Manager
+const ModelManager = require('./modelManager');
+const modelManager = new ModelManager(apiGateway, pool);
+console.log('Model Manager initialized');
+
 // Initialize Processing Worker
-const processingWorker = new ProcessingWorker(queueManager, apiGateway, pool);
+const processingWorker = new ProcessingWorker(queueManager, apiGateway, pool, modelManager);
 
 // Initialize Immich Connector
 let immichConnector = null;
@@ -37,7 +42,9 @@ module.exports = {
   apiGateway,
   queueManager,
   processingWorker,
+  processingWorker,
   immichConnector,
+  modelManager,
   dbInit,
   // Helper to get fresh connector if needed (though it's usually static config)
   getImmichConnector: () => immichConnector

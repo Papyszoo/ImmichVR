@@ -257,12 +257,27 @@ router.post('/assets/:assetId/depth', async (req, res) => {
     const aiUrl = process.env.AI_SERVICE_URL || 'http://ai:5000';
     const modelKey = req.query.model || 'small';
     console.log(`Sending to AI at ${aiUrl}/api/depth?model=${modelKey}`);
+
+    // --- MODEL MANAGER INTEGRATION ---
+    // This is a direct request (likely from settings "Generate" or urgent load), treat as 'manual'
+    const { modelManager } = require('../services');
+    if (modelManager) {
+        // Ensure model is loaded (10m timeout)
+        await modelManager.ensureModelLoaded(modelKey, 'manual');
+    }
+    // ---------------------------------
     
     const aiResponse = await axios.post(`${aiUrl}/api/depth?model=${modelKey}`, formData, {
       headers: formData.getHeaders(),
       responseType: 'arraybuffer',
       timeout: 120000, // 2 minutes
     });
+
+    // --- REGISTER ACTIVITY ---
+    if (modelManager) {
+        await modelManager.registerActivity('manual');
+    }
+    // ------------------------
     
     const depthBuffer = Buffer.from(aiResponse.data);
     console.log(`Generated depth map for ${assetId}, size: ${depthBuffer.length} bytes`);

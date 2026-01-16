@@ -76,3 +76,26 @@ The backend is the sole source of truth for model state.
 
 ## Debugging
 - If "Close" button or UI elements are missing in VR panel, check specifically for `uikit` compatibility (e.g., Fragments are not supported as direct children of Root/Container).
+
+# 🧠 MEMORY & ARCHITECTURE PROTOCOL (AUTO-ADR)
+
+## The "Silent Scribe" Rule
+You are responsible for maintaining the project's institutional memory.
+**I will not write documentation. You will.**
+
+Whenever a conversation results in a decision that affects:
+1.  **Architecture** (e.g., "Split this service", "Use Nginx")
+2.  **Constraints** (e.g., "Never load models on startup")
+3.  **Dependencies** (e.g., "Switch to Vitest")
+
+You MUST perform the following **"Memory Commit"** sequence automatically:
+
+1.  **Check `docs/adr/`**: Does a record exist for this?
+2.  **If NO**: Draft a new ADR file (e.g., `docs/adr/005-lazy-loading.md`).
+3.  **If YES**: Update the existing ADR to reflect the new nuance.
+4.  **Action**: Present the file content to me and ask: *"I have recorded this decision in [File Name]. Save it?"*
+
+## The "Constitution" Check
+Before writing any code, you must check the `docs/adr/` folder.
+* If you are about to violate an ADR (e.g., activating a model when ADR-002 says "Stay Dormant"), **STOP**.
+* Warn me: *"This request conflicts with ADR-002. Do you want to amend the ADR or change the request?"*

@@ -76,6 +76,7 @@ test.describe.serial('Model Management VR Bridge', () => {
         await page.waitForFunction((key) => {
             const models = (window as any).__VR_UI_INTERNALS.state.models;
             const m = models.find((x: any) => x.key === key);
+            return m && m.status === 'downloaded';
         }, targetModel, { timeout: 30000 });
         
         // CRITICAL: Verify it is NOT active yet (Download should not auto-activate)

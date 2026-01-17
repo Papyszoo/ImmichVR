@@ -1,7 +1,11 @@
 /**
  * Photo3DViewsPanel.jsx
+ * 
+ * Pure presentation component for displaying 3D view options.
  * Floating panel on the RIGHT side of a photo showing available 3D views.
- * Displays list of depth models with generate/remove icons based on status.
+ * 
+ * Business logic is handled by usePhoto3DManager hook.
+ * This component only renders the UI based on viewOptions prop.
  */
 import React from 'react';
 import { Root, Container, Text } from '@react-three/uikit';
@@ -40,8 +44,14 @@ const IconButton = ({ icon, onClick, color = '#FFFFFF' }) => (
 
 /**
  * Single model row showing status and action
+ * Now accepts a viewOption object with pre-computed status
  */
-const ModelRow = ({ model, isGenerated, isActive, isDownloaded, onGenerate, onRemove }) => {
+const ModelRow = ({ viewOption, isActive, onGenerate, onRemove, onConvert }) => {
+  const { key, name, params, status, canGenerate, canRemove, canConvert } = viewOption;
+  
+  // Determine visual state
+  const isReady = status === 'ready';
+  const isNotInstalled = status === 'not_installed';
   
   return (
     <Container
@@ -61,23 +71,25 @@ const ModelRow = ({ model, isGenerated, isActive, isDownloaded, onGenerate, onRe
           width={8}
           height={8}
           borderRadius={4}
-          backgroundColor={isGenerated ? COLORS.success : 'transparent'}
-          borderWidth={isGenerated ? 0 : 1}
+          backgroundColor={isReady ? COLORS.success : 'transparent'}
+          borderWidth={isReady ? 0 : 1}
           borderColor="#6B7280"
         />
         <Text color={COLORS.textMain} fontSize={16}>
-          {model.name} ({model.params})
+          {name} {params && `(${params})`}
         </Text>
       </Container>
       
-      {/* Action button */}
-      {isGenerated ? (
-        <IconButton icon="🗑️" onClick={() => onRemove(model.key)} color="#EF4444" />
-      ) : isDownloaded ? (
-        <IconButton icon="➕" onClick={() => onGenerate(model.key)} color={COLORS.primary} />
-      ) : (
+      {/* Action button based on status */}
+      {isNotInstalled ? (
         <Text color={COLORS.textMuted} fontSize={12}>Not installed</Text>
-      )}
+      ) : canRemove ? (
+        <IconButton icon="🗑️" onClick={() => onRemove(key)} color="#EF4444" />
+      ) : canConvert ? (
+        <IconButton icon="🔄" onClick={() => onConvert(key)} color="#F59E0B" />
+      ) : canGenerate ? (
+        <IconButton icon="➕" onClick={() => onGenerate(key)} color={COLORS.primary} />
+      ) : null}
     </Container>
   );
 };
@@ -85,41 +97,25 @@ const ModelRow = ({ model, isGenerated, isActive, isDownloaded, onGenerate, onRe
 /**
  * Photo3DViewsPanel
  * 
+ * Pure presentation component for displaying 3D view options.
+ * All business logic is handled by the usePhoto3DManager hook.
+ * 
  * Props:
- * - photoId: Current photo ID
- * - generatedFiles: Array of { modelKey, id } for files already generated
- * - downloadedModels: Array of model keys that are downloaded
- * - activeModel: Currently viewing model key
+ * - viewOptions: Array of view option objects from usePhoto3DManager
+ * - activeModel: Currently viewing model key (optional)
  * - onGenerate: Callback when user clicks generate (modelKey) => void
- * - onRemove: Callback when user clicks remove (modelKey, fileId) => void
+ * - onRemove: Callback when user clicks remove (modelKey) => void
+ * - onConvert: Callback when user clicks convert (modelKey) => void
  * - position: [x, y, z] position for the panel (default: right of photo)
  */
 function Photo3DViewsPanel({
-  photoId,
-  generatedFiles = [],
-  downloadedModels = ['small'],
-  models = [],
+  viewOptions = [],
   activeModel = null,
   onGenerate = () => {},
   onRemove = () => {},
+  onConvert = () => {},
   position = [1.5, 0, 0], // Right side of photo
 }) {
-  // Create a set of generated model keys for quick lookup
-  const generatedModels = new Set(generatedFiles.map(f => f.modelKey));
-  
-  // Find file ID for a given model (for removal)
-  const getFileId = (modelKey) => {
-    const file = generatedFiles.find(f => f.modelKey === modelKey);
-    return file?.id;
-  };
-  
-  const handleRemove = (modelKey) => {
-    const fileId = getFileId(modelKey);
-    if (fileId) {
-      onRemove(modelKey, fileId);
-    }
-  };
-  
   return (
     <group position={position}>
       <Root pixelSize={0.003}>
@@ -139,16 +135,15 @@ function Photo3DViewsPanel({
           
           {/* Model list */}
           <Container flexDirection="column" gap={4} width="100%">
-            {models.length > 0 ? (
-                models.map((model) => (
+            {viewOptions.length > 0 ? (
+                viewOptions.map((viewOption) => (
                   <ModelRow
-                    key={model.key}
-                    model={model}
-                    isGenerated={generatedModels.has(model.key)}
-                    isActive={activeModel === model.key}
-                    isDownloaded={downloadedModels.includes(model.key)}
+                    key={viewOption.key}
+                    viewOption={viewOption}
+                    isActive={activeModel === viewOption.key}
                     onGenerate={onGenerate}
-                    onRemove={handleRemove}
+                    onRemove={onRemove}
+                    onConvert={onConvert}
                   />
                 ))
             ) : (

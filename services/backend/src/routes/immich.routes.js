@@ -203,10 +203,10 @@ router.post('/assets/:assetId/depth', async (req, res) => {
   try {
     // First, check if we have a cached depth map for this Immich asset
     const cacheResult = await pool.query(
-      `SELECT dmc.file_path, dmc.file_size
-       FROM depth_map_cache dmc
-       JOIN media_items mi ON mi.id = dmc.media_item_id
-       WHERE mi.immich_asset_id = $1 AND dmc.version_type = 'thumbnail'`,
+      `SELECT ga.file_path, ga.file_size
+       FROM generated_assets_3d ga
+       JOIN media_items mi ON mi.id = ga.media_item_id
+       WHERE mi.immich_asset_id = $1 AND ga.asset_type = 'depth_thumbnail'`,
       [assetId]
     );
     
@@ -218,16 +218,7 @@ router.post('/assets/:assetId/depth', async (req, res) => {
       try {
         const cachedBuffer = await fs.readFile(cachedPath);
         
-        // Update access stats
-        await pool.query(
-          `UPDATE depth_map_cache dmc
-           SET accessed_at = NOW(), access_count = access_count + 1
-           FROM media_items mi
-           WHERE mi.id = dmc.media_item_id 
-             AND mi.immich_asset_id = $1 
-             AND dmc.version_type = 'thumbnail'`,
-          [assetId]
-        );
+        // Note: Access stats tracking removed in new schema
         
         res.setHeader('Content-Type', 'image/png');
         res.setHeader('X-Depth-Cache', 'hit');
@@ -325,17 +316,16 @@ router.post('/assets/:assetId/depth', async (req, res) => {
         
         // Store metadata in database
         await pool.query(
-          `INSERT INTO depth_map_cache 
-           (media_item_id, file_path, file_size, format, width, height, model_name, model_version, version_type)
-           VALUES ($1, $2, $3, 'png', 0, 0, 'Depth-Anything-V2', 'small', 'thumbnail')
-           ON CONFLICT (media_item_id, version_type) 
+          `INSERT INTO generated_assets_3d 
+           (media_item_id, asset_type, model_key, format, file_path, file_size, width, height, metadata)
+           VALUES ($1, $2, $3, $4, $5, $6, 0, 0, $7)
+           ON CONFLICT (media_item_id, asset_type, model_key, format) 
            DO UPDATE SET 
              file_path = EXCLUDED.file_path,
              file_size = EXCLUDED.file_size,
              generated_at = NOW(),
-             accessed_at = NOW(),
-             access_count = 0`,
-          [mediaItemId, depthFilePath, depthBuffer.length]
+             updated_at = NOW()`,
+          [mediaItemId, 'depth_thumbnail', modelKey, 'png', depthFilePath, depthBuffer.length, JSON.stringify({ model_name: 'Depth-Anything-V2' })]
         );
         console.log(`Depth map metadata stored for media_item_id=${mediaItemId}`);
       } catch (cacheError) {

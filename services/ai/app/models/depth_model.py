@@ -154,6 +154,7 @@ class DepthModel:
             logger.error(f"Failed to download model {model_key}: {str(e)}")
             return False
 
+    def _unload_current_model(self):
         """Unload current model and free memory."""
         if self._pipeline is not None:
             logger.info(f"Unloading model: {self.current_model_key}")
@@ -317,7 +318,7 @@ class DepthModel:
             self._unload_current_model()
             
         # 2. Mock Logic
-        if self.mock_downloads:
+        if MOCK_DOWNLOADS:
             if model_key in self._mock_downloaded:
                 self._mock_downloaded.remove(model_key)
             return True

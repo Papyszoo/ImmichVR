@@ -16,7 +16,31 @@ import VRPhoto from './VRPhoto'; // Integrated for Viewer
 import styles from './gallery/galleryStyles';
 
 import { usePhotoViewerAnimation } from '../hooks/usePhotoViewerAnimation';
+import { usePhoto3DManager } from '../hooks/usePhoto3DManager';
 import { generateDepthWithModel, getPhotoFiles, deletePhotoFile, getAIModels, getSettings } from '../services/api';
+
+
+/**
+ * Wrapper component that uses the usePhoto3DManager hook
+ * to provide viewOptions to the Photo3DViewsPanel presentation component
+ */
+function Photo3DViewsPanelWrapper({ photoId, photoFiles, availableModels, onGenerate, onRemove, position }) {
+  const { viewOptions } = usePhoto3DManager({
+    generatedFiles: photoFiles,
+    availableModels,
+    photoId,
+  });
+  
+  return (
+    <Photo3DViewsPanel
+      viewOptions={viewOptions}
+      onGenerate={onGenerate}
+      onRemove={onRemove}
+      position={position}
+    />
+  );
+}
+
 
 
 function ViewerItem({ photo, index, selectedIndex, onSelect }) {
@@ -167,18 +191,22 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
   }, [selectedPhotoId, generatingModel]);
   
   // Handle remove generated file
-  const handleRemoveFile = useCallback(async (modelKey, fileId) => {
+  const handleRemoveFile = useCallback(async (modelKey) => {
     if (!selectedPhotoId) return;
     
+    // Find the file ID for this model
+    const file = photoFiles.find(f => f.modelKey === modelKey);
+    if (!file) return;
+    
     try {
-      await deletePhotoFile(selectedPhotoId, fileId);
+      await deletePhotoFile(selectedPhotoId, file.id);
       // Refresh files list
       const data = await getPhotoFiles(selectedPhotoId);
       setPhotoFiles(data.files || []);
     } catch (err) {
       console.error('Failed to delete file:', err);
     }
-  }, [selectedPhotoId]);
+  }, [selectedPhotoId, photoFiles]);
 
   
   // Track VR session state
@@ -494,12 +522,10 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
                 })}
                 
                 {/* 3D Views Panel on right side of current photo */}
-                <Photo3DViewsPanel
+                <Photo3DViewsPanelWrapper
                   photoId={selectedPhotoId}
-                  generatedFiles={photoFiles.map(f => ({ modelKey: f.modelKey, id: f.id }))}
-                  downloadedModels={downloadedModels}
-                  models={availableModels}
-                  activeModel={null}
+                  photoFiles={photoFiles}
+                  availableModels={availableModels}
                   onGenerate={handleGenerateDepth}
                   onRemove={handleRemoveFile}
                   position={[1.2, 1.6, -settings.wallDistance]}

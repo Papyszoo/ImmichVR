@@ -7,7 +7,7 @@
  */
 
 const { Pool } = require('pg');
-const QueueManager = require('./queueManager');
+const QueueManager = require('./src/services/queueManager');
 
 // Test configuration
 const TEST_CONFIG = {
@@ -41,12 +41,12 @@ async function runTests() {
       SELECT table_name 
       FROM information_schema.tables 
       WHERE table_schema = 'public' 
-      AND table_name IN ('media_items', 'processing_queue', 'depth_map_cache')
+      AND table_name IN ('media_items', 'processing_queue', 'generated_assets_3d')
       ORDER BY table_name
     `);
     
     const tables = tablesResult.rows.map(r => r.table_name);
-    const requiredTables = ['media_items', 'processing_queue', 'depth_map_cache'];
+    const requiredTables = ['media_items', 'processing_queue', 'generated_assets_3d'];
     const allTablesPresent = requiredTables.every(t => tables.includes(t));
     
     if (allTablesPresent) {

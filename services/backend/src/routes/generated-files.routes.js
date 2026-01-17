@@ -16,33 +16,34 @@ router.get('/:id/files', async (req, res) => {
   const { id } = req.params;
   
   try {
-    // Get all depth maps for this photo
+    // Get all 3D assets for this photo
     const result = await pool.query(`
       SELECT 
         id,
+        asset_type,
+        model_key,
+        format,
         file_path,
         file_size,
-        model_key,
-        model_name,
-        version_type,
         width,
         height,
+        metadata,
         generated_at
-      FROM depth_map_cache
+      FROM generated_assets_3d
       WHERE media_item_id = $1
       ORDER BY generated_at DESC
     `, [id]);
     
     const files = result.rows.map(row => ({
       id: row.id,
-      type: 'depth',
+      type: row.asset_type,
       modelKey: row.model_key,
-      modelName: row.model_name,
-      versionType: row.version_type,
+      format: row.format,
       filePath: row.file_path,
       fileSize: row.file_size,
       width: row.width,
       height: row.height,
+      metadata: row.metadata,
       generatedAt: row.generated_at,
     }));
     
@@ -68,7 +69,7 @@ router.delete('/:id/files/:fileId', async (req, res) => {
   try {
     // Get file info first
     const fileResult = await pool.query(`
-      SELECT id, file_path, model_key FROM depth_map_cache
+      SELECT id, file_path, model_key, asset_type FROM generated_assets_3d
       WHERE id = $1 AND media_item_id = $2
     `, [fileId, id]);
     
@@ -78,9 +79,10 @@ router.delete('/:id/files/:fileId', async (req, res) => {
     
     const filePath = fileResult.rows[0].file_path;
     const modelKey = fileResult.rows[0].model_key;
+    const assetType = fileResult.rows[0].asset_type;
     
     // Delete from database
-    await pool.query('DELETE FROM depth_map_cache WHERE id = $1', [fileId]);
+    await pool.query('DELETE FROM generated_assets_3d WHERE id = $1', [fileId]);
     
     // Delete physical file if it exists
     try {
@@ -92,7 +94,7 @@ router.delete('/:id/files/:fileId', async (req, res) => {
     
     res.json({
       success: true,
-      message: `Deleted ${modelKey} depth map`,
+      message: `Deleted ${modelKey} ${assetType}`,
       deletedFileId: fileId,
     });
     
@@ -111,16 +113,17 @@ router.get('/:id/files/available-models', async (req, res) => {
   const { id } = req.params;
   
   try {
-    // Get downloaded models
+    // Get downloaded models (currently only depth models)
     const modelsResult = await pool.query(`
-      SELECT model_key FROM ai_models WHERE status = 'downloaded'
+      SELECT model_key FROM ai_models 
+      WHERE status = 'downloaded' AND type = 'depth'
     `);
     const downloadedModels = modelsResult.rows.map(r => r.model_key);
     
     // Get models that already have depth for this photo
     const existingResult = await pool.query(`
-      SELECT DISTINCT model_key FROM depth_map_cache
-      WHERE media_item_id = $1
+      SELECT DISTINCT model_key FROM generated_assets_3d
+      WHERE media_item_id = $1 AND asset_type = 'depth'
     `, [id]);
     const existingModels = existingResult.rows.map(r => r.model_key);
     

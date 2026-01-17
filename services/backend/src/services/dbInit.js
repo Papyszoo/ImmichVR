@@ -134,12 +134,115 @@ async function ensureSchema() {
       }
       
       // Check/create trigger function if missing? (Skipping for simplicity, assuming basic function exists or defaults work)
-      // Ideally we'd add update_updated_at_column trigger here too but it might be complex if function missing.
+      // Check/create trigger function if missing? (Skipping for simplicity, assuming basic function exists or defaults work)
       
       await client.query('COMMIT');
-      console.log('Migration applied successfully.');
+      console.log('Base migration applied successfully.');
     } else {
-      console.log('Database schema is up to date.');
+      console.log('Base database schema is up to date (ai_models.name exists).');
+    }
+
+    // ============================================================================
+    // MIGRATION: Generic 3D Assets (Phase 1.1)
+    // ============================================================================
+    const genAssetsTable = await client.query(`
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_name='generated_assets_3d'
+      `);
+      
+    if (genAssetsTable.rows.length === 0) {
+      console.log('Applying migration: Generic 3D Assets (Replacing depth_map_cache)...');
+      
+      await client.query('BEGIN');
+
+        // 1. Drop old table
+        await client.query('DROP TABLE IF EXISTS depth_map_cache CASCADE');
+        await client.query('DROP TYPE IF EXISTS depth_map_format CASCADE');
+        await client.query('DROP TYPE IF EXISTS depth_map_version CASCADE');
+
+        // 2. Create generated_assets_3d table
+        await client.query(`
+          CREATE TABLE generated_assets_3d (
+              id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+              media_item_id UUID NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
+              asset_type VARCHAR(20) NOT NULL,
+              model_key VARCHAR(50),
+              format VARCHAR(20) NOT NULL,
+              file_path TEXT NOT NULL,
+              file_size BIGINT,
+              width INTEGER,
+              height INTEGER,
+              metadata JSONB DEFAULT '{}',
+              generated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+              created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+              updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+              CONSTRAINT unique_asset_version UNIQUE NULLS NOT DISTINCT (media_item_id, asset_type, model_key, format)
+          )
+        `);
+
+        // Indexes
+        await client.query('CREATE INDEX idx_generated_assets_3d_media_item_id ON generated_assets_3d(media_item_id)');
+        await client.query('CREATE INDEX idx_generated_assets_3d_asset_type ON generated_assets_3d(asset_type)');
+        await client.query('CREATE INDEX idx_generated_assets_3d_model_key ON generated_assets_3d(model_key)');
+        await client.query('CREATE INDEX idx_generated_assets_3d_generated_at ON generated_assets_3d(generated_at)');
+        await client.query('CREATE INDEX idx_generated_assets_3d_media_type_model ON generated_assets_3d(media_item_id, asset_type, model_key)');
+
+        // 3. Update ai_models table
+        await client.query(`ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS type VARCHAR(20) NOT NULL DEFAULT 'depth'`);
+        // Rename columns if they exist (handling potential re-run case or partial state)
+        // Note: In postgres, renaming if exists is tricky in one line, but ALTER TABLE fails if column missing.
+        // We'll assume the previous migration block ran so 'params' and 'memory' exist.
+        
+        // Check if params_size already exists to avoid error
+        const aiModelsCols = await client.query(`SELECT column_name FROM information_schema.columns WHERE table_name='ai_models'`);
+        const cols = aiModelsCols.rows.map(r => r.column_name);
+        
+        if (cols.includes('params') && !cols.includes('params_size')) {
+             await client.query('ALTER TABLE ai_models RENAME COLUMN params TO params_size');
+        }
+        if (cols.includes('memory') && !cols.includes('vram_usage')) {
+             await client.query('ALTER TABLE ai_models RENAME COLUMN memory TO vram_usage');
+        }
+
+        // 4. Update Views
+        await client.query('DROP VIEW IF EXISTS media_processing_status CASCADE');
+        await client.query(`
+          CREATE VIEW media_processing_status AS
+          SELECT 
+              m.id AS media_id,
+              m.original_filename,
+              m.media_type,
+              m.uploaded_at,
+              pq.status AS processing_status,
+              pq.attempts AS processing_attempts,
+              pq.last_error,
+              ga.id AS asset_id,
+              ga.asset_type,
+              ga.model_key,
+              ga.format,
+              ga.file_path AS asset_path,
+              ga.generated_at AS asset_generated_at
+          FROM media_items m
+          LEFT JOIN processing_queue pq ON m.id = pq.media_item_id
+          LEFT JOIN generated_assets_3d ga ON m.id = ga.media_item_id
+        `);
+        
+        // 5. Trigger
+        await client.query(`
+            CREATE TRIGGER update_generated_assets_3d_updated_at
+            BEFORE UPDATE ON generated_assets_3d
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column()
+        `);
+
+
+
+      
+      await client.query('COMMIT');
+      console.log('Generic 3D Assets migration applied successfully.');
+    } else {
+      console.log('Generic 3D Assets schema is up to date.');
     }
   } catch (error) {
     await client.query('ROLLBACK');

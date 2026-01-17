@@ -274,21 +274,22 @@ class ProcessingWorker {
    */
   async storeDepthMapMetadata(mediaItemId, depthMapPath, fileSize, versionType = 'full_resolution') {
     const modelName = process.env.AI_MODEL_NAME || DEFAULT_MODEL_NAME;
-    const modelVersion = process.env.AI_MODEL_VERSION || DEFAULT_MODEL_VERSION;
+    const modelVersion = process.env.AI_MODEL_VERSION || DEFAULT_MODEL_VERSION; // This maps to model_key
+    
+    // Determine asset type based on version
+    const assetType = versionType === 'thumbnail' ? 'depth_thumbnail' : 'depth';
     
     await this.pool.query(
-      `INSERT INTO depth_map_cache 
-       (media_item_id, file_path, file_size, format, width, height, model_name, model_version, version_type)
-       VALUES ($1, $2, $3, $4, 0, 0, $5, $6, $7)
-       ON CONFLICT (media_item_id, version_type) 
+      `INSERT INTO generated_assets_3d 
+       (media_item_id, asset_type, model_key, format, file_path, file_size, width, height, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, 0, 0, $7)
+       ON CONFLICT (media_item_id, asset_type, model_key, format) 
        DO UPDATE SET 
          file_path = EXCLUDED.file_path,
          file_size = EXCLUDED.file_size,
          generated_at = NOW(),
-         accessed_at = NOW(),
-         access_count = 0,
          updated_at = NOW()`,
-      [mediaItemId, depthMapPath, fileSize, 'png', modelName, modelVersion, versionType]
+      [mediaItemId, assetType, modelVersion, 'png', depthMapPath, fileSize, JSON.stringify({ model_name: modelName })]
     );
   }
 
@@ -392,19 +393,17 @@ class ProcessingWorker {
     };
     
     await this.pool.query(
-      `INSERT INTO depth_map_cache 
-       (media_item_id, file_path, file_size, format, width, height, model_name, model_version, version_type, processing_params)
-       VALUES ($1, $2, $3, $4, 0, 0, $5, $6, $7, $8)
-       ON CONFLICT (media_item_id, version_type) 
+      `INSERT INTO generated_assets_3d 
+       (media_item_id, asset_type, model_key, format, file_path, file_size, width, height, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, 0, 0, $7)
+       ON CONFLICT (media_item_id, asset_type, model_key, format) 
        DO UPDATE SET 
          file_path = EXCLUDED.file_path,
          file_size = EXCLUDED.file_size,
-         processing_params = EXCLUDED.processing_params,
+         metadata = EXCLUDED.metadata,
          generated_at = NOW(),
-         accessed_at = NOW(),
-         access_count = 0,
          updated_at = NOW()`,
-      [mediaItemId, depthMapZipPath, fileSize, 'raw', modelName, modelVersion, 'full_resolution', JSON.stringify(processingParams)]
+      [mediaItemId, 'video_depth_frames', modelVersion, 'raw', depthMapZipPath, fileSize, JSON.stringify({ ...processingParams, model_name: modelName })]
     );
   }
 
@@ -424,19 +423,17 @@ class ProcessingWorker {
     };
     
     await this.pool.query(
-      `INSERT INTO depth_map_cache 
-       (media_item_id, file_path, file_size, format, width, height, model_name, model_version, version_type, processing_params)
-       VALUES ($1, $2, $3, $4, 0, 0, $5, $6, $7, $8)
-       ON CONFLICT (media_item_id, version_type) 
+      `INSERT INTO generated_assets_3d 
+       (media_item_id, asset_type, model_key, format, file_path, file_size, width, height, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, 0, 0, $7)
+       ON CONFLICT (media_item_id, asset_type, model_key, format) 
        DO UPDATE SET 
          file_path = EXCLUDED.file_path,
          file_size = EXCLUDED.file_size,
-         processing_params = EXCLUDED.processing_params,
+         metadata = EXCLUDED.metadata,
          generated_at = NOW(),
-         accessed_at = NOW(),
-         access_count = 0,
          updated_at = NOW()`,
-      [mediaItemId, sbsVideoPath, fileSize, 'raw', modelName, modelVersion, 'full_resolution', JSON.stringify(processingParams)]
+      [mediaItemId, 'video_sbs', modelVersion, 'raw', sbsVideoPath, fileSize, JSON.stringify({ ...processingParams, model_name: modelName })]
     );
   }
 

@@ -17,16 +17,24 @@ const COLORS = {
   surfaceHighlight: '#374151',
   primary: '#3B82F6',
   success: '#10B981',
+  warning: '#F59E0B',
+  danger: '#EF4444',
   textMain: '#FFFFFF',
   textMuted: '#9CA3AF',
 };
 
-// Model metadata passed via props
+// Text-based icons that render reliably in WebGL/Three.js
+const ICONS = {
+  generate: '+',
+  remove: 'X',
+  convert: '~',
+  apply: '>',
+};
 
 /**
- * Icon button for generate/remove actions
+ * Icon button for actions
  */
-const IconButton = ({ icon, onClick, color = '#FFFFFF' }) => (
+const IconButton = ({ icon, onClick, color = '#FFFFFF', title = '' }) => (
   <Container
     width={32}
     height={32}
@@ -38,7 +46,7 @@ const IconButton = ({ icon, onClick, color = '#FFFFFF' }) => (
     cursor="pointer"
     onClick={onClick}
   >
-    <Text color={color} fontSize={18}>{icon}</Text>
+    <Text color={color} fontSize={18} fontWeight="bold">{icon}</Text>
   </Container>
 );
 
@@ -46,50 +54,89 @@ const IconButton = ({ icon, onClick, color = '#FFFFFF' }) => (
  * Single model row showing status and action
  * Now accepts a viewOption object with pre-computed status
  */
-const ModelRow = ({ viewOption, isActive, onGenerate, onRemove, onConvert }) => {
+const ModelRow = ({ viewOption, isActive, onGenerate, onRemove, onConvert, onSelect }) => {
   const { key, name, params, status, canGenerate, canRemove, canConvert } = viewOption;
   
   // Determine visual state
   const isReady = status === 'ready';
   const isNotInstalled = status === 'not_installed';
+  const isMissing = status === 'missing';
+  
+  // Click on the row to select this view (if ready)
+  const handleRowClick = () => {
+    if (isReady && onSelect) {
+      onSelect(key);
+    }
+  };
   
   return (
     <Container
       width="100%"
       height={44}
       backgroundColor={isActive ? COLORS.primary : 'transparent'}
-      hover={{ backgroundColor: isActive ? COLORS.primary : 'rgba(255,255,255,0.05)' }}
+      hover={{ backgroundColor: isActive ? COLORS.primary : 'rgba(255,255,255,0.08)' }}
       flexDirection="row"
       alignItems="center"
       justifyContent="space-between"
       paddingX={12}
       borderRadius={8}
+      cursor={isReady ? 'pointer' : 'default'}
+      onClick={handleRowClick}
     >
       <Container flexDirection="row" alignItems="center" gap={8}>
         {/* Status indicator */}
         <Container
-          width={8}
-          height={8}
-          borderRadius={4}
-          backgroundColor={isReady ? COLORS.success : 'transparent'}
-          borderWidth={isReady ? 0 : 1}
+          width={10}
+          height={10}
+          borderRadius={5}
+          backgroundColor={isReady ? COLORS.success : isMissing ? COLORS.warning : 'transparent'}
+          borderWidth={isReady || isMissing ? 0 : 1}
           borderColor="#6B7280"
         />
-        <Text color={COLORS.textMain} fontSize={16}>
+        <Text color={COLORS.textMain} fontSize={15}>
           {name} {params && `(${params})`}
         </Text>
       </Container>
       
-      {/* Action button based on status */}
-      {isNotInstalled ? (
-        <Text color={COLORS.textMuted} fontSize={12}>Not installed</Text>
-      ) : canRemove ? (
-        <IconButton icon="🗑️" onClick={() => onRemove(key)} color="#EF4444" />
-      ) : canConvert ? (
-        <IconButton icon="🔄" onClick={() => onConvert(key)} color="#F59E0B" />
-      ) : canGenerate ? (
-        <IconButton icon="➕" onClick={() => onGenerate(key)} color={COLORS.primary} />
-      ) : null}
+      {/* Action buttons based on status */}
+      <Container flexDirection="row" gap={4}>
+        {isNotInstalled ? (
+          <Text color={COLORS.textMuted} fontSize={11}>Not installed</Text>
+        ) : isReady ? (
+          <>
+            {/* Select button to apply this depth */}
+            {!isActive && (
+              <IconButton 
+                icon={ICONS.apply} 
+                onClick={(e) => { e.stopPropagation(); onSelect && onSelect(key); }} 
+                color={COLORS.success}
+                title="Apply this depth"
+              />
+            )}
+            {/* Remove button */}
+            <IconButton 
+              icon={ICONS.remove} 
+              onClick={(e) => { e.stopPropagation(); onRemove(key); }} 
+              color={COLORS.danger}
+              title="Remove"
+            />
+          </>
+        ) : canConvert ? (
+          <IconButton 
+            icon={ICONS.convert} 
+            onClick={(e) => { e.stopPropagation(); onConvert(key); }} 
+            color={COLORS.warning}
+            title="Convert"
+          />
+        ) : canGenerate ? (
+          <IconButton 
+            icon={ICONS.generate} 
+            onClick={(e) => { e.stopPropagation(); onGenerate(key); }} 
+            color={COLORS.primary}
+            title="Generate"
+          />
+        ) : null}
+      </Container>
     </Container>
   );
 };
@@ -106,6 +153,7 @@ const ModelRow = ({ viewOption, isActive, onGenerate, onRemove, onConvert }) => 
  * - onGenerate: Callback when user clicks generate (modelKey) => void
  * - onRemove: Callback when user clicks remove (modelKey) => void
  * - onConvert: Callback when user clicks convert (modelKey) => void
+ * - onSelect: Callback when user selects a view to apply (modelKey) => void
  * - position: [x, y, z] position for the panel (default: right of photo)
  */
 function Photo3DViewsPanel({
@@ -114,14 +162,15 @@ function Photo3DViewsPanel({
   onGenerate = () => {},
   onRemove = () => {},
   onConvert = () => {},
+  onSelect = () => {},
   position = [1.5, 0, 0], // Right side of photo
 }) {
   return (
     <group position={position}>
       <Root pixelSize={0.003}>
         <Container
-          width={200}
-          height={180}
+          width={220}
+          height={200}
           backgroundColor={COLORS.bg}
           backgroundOpacity={COLORS.bgOpacity}
           flexDirection="column"
@@ -144,6 +193,7 @@ function Photo3DViewsPanel({
                     onGenerate={onGenerate}
                     onRemove={onRemove}
                     onConvert={onConvert}
+                    onSelect={onSelect}
                   />
                 ))
             ) : (
@@ -157,3 +207,4 @@ function Photo3DViewsPanel({
 }
 
 export default Photo3DViewsPanel;
+

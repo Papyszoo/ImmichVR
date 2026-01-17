@@ -117,6 +117,50 @@ router.post('/:id/generate', async (req, res) => {
 });
 
 /**
+ * GET /api/assets/:id/files/:fileId/download
+ * Download a specific generated file (depth map, etc.)
+ */
+router.get('/:id/files/:fileId/download', async (req, res) => {
+  const { id, fileId } = req.params;
+  
+  try {
+    // Get file info
+    const fileResult = await pool.query(`
+      SELECT id, file_path, format, asset_type FROM generated_assets_3d
+      WHERE id = $1
+    `, [fileId]);
+    
+    if (fileResult.rows.length === 0) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+    
+    const filePath = fileResult.rows[0].file_path;
+    const format = fileResult.rows[0].format;
+    
+    // Determine content type
+    const contentTypes = {
+      'png': 'image/png',
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'ply': 'application/octet-stream',
+      'splat': 'application/octet-stream',
+      'ksplat': 'application/octet-stream',
+    };
+    const contentType = contentTypes[format] || 'application/octet-stream';
+    
+    // Read and send file
+    const fileBuffer = await fs.readFile(filePath);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `inline; filename="${path.basename(filePath)}"`);
+    res.send(fileBuffer);
+    
+  } catch (error) {
+    console.error('Error downloading generated file:', error);
+    res.status(500).json({ error: 'Failed to download file' });
+  }
+});
+
+/**
  * DELETE /api/assets/:id/files/:fileId
  * Delete a specific generated file
  */
@@ -159,6 +203,7 @@ router.delete('/:id/files/:fileId', async (req, res) => {
     res.status(500).json({ error: 'Failed to delete file' });
   }
 });
+
 
 
 // --- Helper Functions ---

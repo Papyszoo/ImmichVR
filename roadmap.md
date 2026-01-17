@@ -1,24 +1,5 @@
 # ImmichVR Master Roadmap
 
-🧹 Phase 2: VR Core Cleanup (Immediate)
-
-Goal: Remove legacy 2D debris and ensure a unified VR-first experience.
-2.1 VR Usability Assessment
-
-    Evaluate current 3D UI interaction models (raycasting vs direct touch).
-
-    Identify friction points in photo navigation and setting adjustments.
-
-2.2 Legacy Removal
-
-    Remove SettingsModal: Legacy DOM-based overlay.
-
-    Clean Routes: Remove unused 2D gallery routes (TimelineGallery, etc).
-
-    Enforce Canvas: Ensure all new UI components use @react-three/uikit.
-
-✨ Phase 3: Gaussian Splatting Support (High Priority)
-
 Goal: Add photorealistic 3D viewing. Depends on Phase 1 architecture.
 3.1 Model Strategy
 

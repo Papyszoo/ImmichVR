@@ -24,7 +24,7 @@ import { generateDepthWithModel, getPhotoFiles, deletePhotoFile, getAIModels, ge
  * Wrapper component that uses the usePhoto3DManager hook
  * to provide viewOptions to the Photo3DViewsPanel presentation component
  */
-function Photo3DViewsPanelWrapper({ photoId, photoFiles, availableModels, onGenerate, onRemove, position }) {
+function Photo3DViewsPanelWrapper({ photoId, photoFiles, availableModels, onGenerate, onRemove, onSelect, activeModel, position }) {
   const { viewOptions } = usePhoto3DManager({
     generatedFiles: photoFiles,
     availableModels,
@@ -34,8 +34,10 @@ function Photo3DViewsPanelWrapper({ photoId, photoFiles, availableModels, onGene
   return (
     <Photo3DViewsPanel
       viewOptions={viewOptions}
+      activeModel={activeModel}
       onGenerate={onGenerate}
       onRemove={onRemove}
+      onSelect={onSelect}
       onConvert={() => console.log('Convert not implemented yet')}
       position={position}
     />
@@ -104,6 +106,7 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
   const [downloadedModels, setDownloadedModels] = useState(['small']); // Keep for compatibility if needed
   const [availableModels, setAvailableModels] = useState([]); // Full model metadata
   const [generatingModel, setGeneratingModel] = useState(null);
+  const [activeDepthModel, setActiveDepthModel] = useState(null); // Currently applied depth model
   
   // Auto-generate depth when entering photo view
   useEffect(() => {
@@ -153,7 +156,9 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
       .catch(err => console.warn('Failed to fetch photo files:', err));
   }, [selectedPhotoId]);
 
-  // Fetch available models on mount
+  // Fetch available models on mount AND when entering viewer mode
+  // Re-fetching when selectedPhotoId changes ensures the 3D Views panel
+  // shows fresh model status (e.g., after downloading via Settings)
   useEffect(() => {
     getAIModels()
       .then(data => {
@@ -169,7 +174,7 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
         }
       })
       .catch(err => console.warn('Failed to fetch AI models:', err));
-  }, []);
+  }, [selectedPhotoId]); // Re-fetch when photo selection changes
   
   // Handle generate depth with specific model
   const handleGenerateDepth = useCallback(async (modelKey) => {
@@ -204,8 +209,50 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
       // Refresh files list
       const data = await getPhotoFiles(selectedPhotoId);
       setPhotoFiles(data.files || []);
+      
+      // If the removed model was active, clear it
+      if (activeDepthModel === modelKey) {
+        setActiveDepthModel(null);
+        // Clear from depth cache
+        setDepthCache(prev => {
+          const next = { ...prev };
+          delete next[selectedPhotoId];
+          return next;
+        });
+      }
     } catch (err) {
       console.error('Failed to delete file:', err);
+    }
+  }, [selectedPhotoId, photoFiles, activeDepthModel]);
+  
+  // Handle selecting a depth model to apply
+  const handleSelectDepth = useCallback(async (modelKey) => {
+    if (!selectedPhotoId) return;
+    
+    // Find the depth file for this model
+    const file = photoFiles.find(f => f.modelKey === modelKey && f.type === 'depth');
+    if (!file) {
+      console.warn('No depth file found for model:', modelKey);
+      return;
+    }
+    
+    // Fetch the depth map and add to cache
+    try {
+      const response = await fetch(`/api/assets/${selectedPhotoId}/files/${file.id}/download`);
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        setDepthCache(prev => ({ ...prev, [selectedPhotoId]: url }));
+        setActiveDepthModel(modelKey);
+      } else {
+        // If download endpoint doesn't exist, try constructing URL from file path
+        // For now, just set active model - the photo may already have depth
+        setActiveDepthModel(modelKey);
+      }
+    } catch (err) {
+      console.error('Failed to fetch depth file:', err);
+      // Fallback: just set active model
+      setActiveDepthModel(modelKey);
     }
   }, [selectedPhotoId, photoFiles]);
 
@@ -550,8 +597,10 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
                   photoId={selectedPhotoId}
                   photoFiles={photoFiles}
                   availableModels={availableModels}
+                  activeModel={activeDepthModel}
                   onGenerate={handleGenerateDepth}
                   onRemove={handleRemoveFile}
+                  onSelect={handleSelectDepth}
                   position={[1.2, 1.6, -settings.wallDistance]}
                 />
              </group>

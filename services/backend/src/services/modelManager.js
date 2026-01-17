@@ -28,6 +28,7 @@ class ModelManager {
 
   /**
    * Sync database status with actual disk state from AI service
+   * This ensures the DB accurately reflects what models are actually downloaded
    */
   async syncModelsWithService() {
     try {
@@ -41,6 +42,14 @@ class ModelManager {
              await this.pool.query(
                `UPDATE ai_models SET status = 'downloaded', downloaded_at = COALESCE(downloaded_at, NOW()) 
                 WHERE model_key = $1 AND status != 'downloaded'`,
+               [model.key]
+             );
+          } else {
+             // If service says NOT downloaded, update DB to match reality
+             // This handles the case where DB was seeded with 'downloaded' but cache is empty
+             await this.pool.query(
+               `UPDATE ai_models SET status = 'not_downloaded', downloaded_at = NULL 
+                WHERE model_key = $1 AND status = 'downloaded'`,
                [model.key]
              );
           }

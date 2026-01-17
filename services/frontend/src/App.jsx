@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import TimelineGallery from './components/TimelineGallery';
-
 import VRThumbnailGallery from './components/VRThumbnailGallery';
-import { getImmichPhotos, getImmichThumbnail, getImmichFile, generateImmichDepth } from './services/api';
+import { getImmichPhotos, getImmichThumbnail } from './services/api';
 
 const PAGE_SIZE = 100;
 
@@ -12,8 +10,6 @@ function App() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
   const [selectedPhoto, setSelectedPhoto] = useState(null);
-  const [viewMode, setViewMode] = useState('vr-gallery'); // 'gallery', 'vr-gallery', or 'viewer'
-  const [loadingDepth, setLoadingDepth] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const loadedPhotoIds = useRef(new Set());
@@ -90,12 +86,9 @@ function App() {
     }
   }, [loadingMore, hasMore, currentPage]);
 
-  const handleSelectPhoto = async (photo) => {
+  const handleSelectPhoto = (photo) => {
     setSelectedPhoto(photo);
-    setViewMode('vr-gallery');
   };
-
-
 
   // Loading state
   if (loading) {
@@ -117,32 +110,12 @@ function App() {
     );
   }
 
-  // VR Thumbnail Gallery mode (3D grid with integrated viewer)
-  if (viewMode === 'vr-gallery') {
-    return (
-      <VRThumbnailGallery
-        photos={photos}
-        initialSelectedId={selectedPhoto?.id}
-        onSelectPhoto={handleSelectPhoto}
-        onClose={() => {
-          setSelectedPhoto(null);
-          setViewMode('gallery'); 
-        }}
-        onLoadMore={loadMorePhotos}
-        hasMore={hasMore}
-        loadingMore={loadingMore}
-      />
-    );
-  }
-
-
-
-  // Timeline gallery mode (2D HTML)
+  // VR Gallery - the only view mode
   return (
-    <TimelineGallery 
-      photos={photos} 
+    <VRThumbnailGallery
+      photos={photos}
+      initialSelectedId={selectedPhoto?.id}
       onSelectPhoto={handleSelectPhoto}
-      onEnterVR={() => setViewMode('vr-gallery')}
       onLoadMore={loadMorePhotos}
       hasMore={hasMore}
       loadingMore={loadingMore}

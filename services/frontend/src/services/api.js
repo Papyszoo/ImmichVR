@@ -213,15 +213,15 @@ export const deleteModel = async (modelKey) => {
 };
 
 // ============================================================================
-// GENERATED FILES API
+// GENERATED ASSETS API
 // ============================================================================
 
 /**
- * Get all generated files (depth maps) for a photo
+ * Get all generated files (depth maps, splats) for a photo
  * @param {string} photoId - The photo/asset ID
  */
 export const getPhotoFiles = async (photoId) => {
-  const response = await api.get(`/photos/${photoId}/files`);
+  const response = await api.get(`/assets/${photoId}/files`);
   return response.data;
 };
 
@@ -231,22 +231,34 @@ export const getPhotoFiles = async (photoId) => {
  * @param {string} fileId - The file ID to delete
  */
 export const deletePhotoFile = async (photoId, fileId) => {
-  const response = await api.delete(`/photos/${photoId}/files/${fileId}`);
+  const response = await api.delete(`/assets/${photoId}/files/${fileId}`);
   return response.data;
 };
 
 /**
- * Generate depth for a photo with specific model
+ * Generate a 3D asset (Depth, Splat, etc.)
+ * @param {string} assetId - The asset ID
+ * @param {string} type - "depth" or "splat"
+ * @param {string} modelKey - Model key (e.g. "small", "gs-fast")
+ */
+export const generateAsset = async (assetId, type = 'depth', modelKey = 'small') => {
+    const response = await api.post(`/assets/${assetId}/generate`, { type, modelKey }, {
+        responseType: 'blob', // Expecting binary (image/ply) or json depending on type
+        timeout: 120000, 
+    });
+    // If it's depth, we get a blob. If splat, might get JSON job ID (future).
+    // For now, assuming depth returns blob.
+    return response.data;
+};
+
+/**
+ * Generate depth for a photo with specific model (Wrapper for generateAsset)
  * @param {string} assetId - The asset ID
  * @param {string} modelKey - Model to use (small, base, large)
  * @returns {Promise<Blob>} - Depth map image blob
  */
 export const generateDepthWithModel = async (assetId, modelKey = 'small') => {
-  const response = await api.post(`/immich/assets/${assetId}/depth?model=${modelKey}`, {}, {
-    responseType: 'blob',
-    timeout: 120000,
-  });
-  return response.data;
+  return generateAsset(assetId, 'depth', modelKey);
 };
 
 export default api;

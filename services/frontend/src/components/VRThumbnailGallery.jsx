@@ -36,6 +36,7 @@ function Photo3DViewsPanelWrapper({ photoId, photoFiles, availableModels, onGene
       viewOptions={viewOptions}
       onGenerate={onGenerate}
       onRemove={onRemove}
+      onConvert={() => console.log('Convert not implemented yet')}
       position={position}
     />
   );
@@ -396,6 +397,29 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
     if (!selectedPhotoId) return -1;
     return photos.findIndex(p => p.id === selectedPhotoId);
   }, [photos, selectedPhotoId]);
+
+  // --- TEST BRIDGE ---
+  // Expose internal state and actions for Playwright E2E testing
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.__VR_VIEWER_INTERNALS = {
+        state: {
+          selectedPhotoId,
+          photoFiles,
+          generatingModel,
+          depthCache,
+          settings,
+          photos // Expose photos list to find IDs
+        },
+        actions: {
+            generateAsset: handleGenerateDepth,
+            removeAsset: handleRemoveFile,
+            selectPhoto: (id) => setSelectedPhotoId(id),
+            setSettings: setSettings
+        }
+      };
+    }
+  }, [selectedPhotoId, photoFiles, generatingModel, depthCache, settings, photos, handleGenerateDepth, handleRemoveFile]);
 
   return (
     <div ref={scrollRef} style={styles.container}>

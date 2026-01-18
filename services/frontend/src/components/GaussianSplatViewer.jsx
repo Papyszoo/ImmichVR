@@ -1,43 +1,183 @@
 /**
  * GaussianSplatViewer.jsx
  * 
- * Renders 3D Gaussian Splats in VR using @react-three/drei's Splat component.
+ * Renders 3D Gaussian Splats in VR using @sparkjsdev/spark's SplatMesh.
+ * Supports .ply, .ksplat, .splat, and .spz file formats.
  */
-import React, { Suspense } from 'react';
-import { Splat } from '@react-three/drei';
+import React, { useEffect, useRef, useState } from 'react';
+import { useThree } from '@react-three/fiber';
+import { SplatMesh, SplatLoader, SplatFileType } from '@sparkjsdev/spark';
 
-// Known-good test splat from drei documentation
-const TEST_SPLAT_URL = "https://huggingface.co/cakewalk/splat-data/resolve/main/nike.splat";
+// Known-good test splat from Spark documentation
+const TEST_SPLAT_URL = "https://sparkjs.dev/assets/splats/butterfly.spz";
+
+// Map string fileType values to SparkJS SplatFileType enum
+const FILE_TYPE_MAP = {
+  'ply': SplatFileType.PLY,
+  'ksplat': SplatFileType.KSPLAT,
+  'splat': SplatFileType.SPLAT,
+  'spz': SplatFileType.SPZ,
+};
 
 /**
- * GaussianSplatViewer - Renders 3D Gaussian Splats using drei's Splat component
+ * GaussianSplatViewer - Renders 3D Gaussian Splats using SparkJS SplatMesh
+ * 
+ * @param {string} splatUrl - URL to the splat file (.ply, .ksplat, .splat, .spz)
+ * @param {string} fileType - Explicit file type for blob URLs ('ply', 'ksplat', 'splat', 'spz')
+ * @param {Array} position - [x, y, z] position in 3D space
+ * @param {Array} rotation - [x, y, z] rotation in radians
+ * @param {number} scale - Uniform scale factor
+ * @param {boolean} testMode - When true, loads a known-good test splat
+ * @param {Function} onLoad - Callback when splat finishes loading
+ * @param {Function} onError - Callback when loading fails
  */
 function GaussianSplatViewer({ 
   splatUrl, 
+  fileType,
   position = [0, 1.5, -2],
+  rotation = [0, 0, 0],
   scale = 1.0,
-  testMode = false, // Set to true to load known-good test splat
+  testMode = false,
   onLoad,
   onError
 }) {
+  const { scene } = useThree();
+  const splatMeshRef = useRef(null);
+  const [isLoaded, setIsLoaded] = useState(false);
+  
+  // Store callbacks in refs to avoid stale closures
+  const onLoadRef = useRef(onLoad);
+  const onErrorRef = useRef(onError);
+  useEffect(() => { onLoadRef.current = onLoad; }, [onLoad]);
+  useEffect(() => { onErrorRef.current = onError; }, [onError]);
+  
   const url = testMode ? TEST_SPLAT_URL : splatUrl;
   
-  if (!url) {
-    return null;
-  }
-
-  console.log('[GaussianSplatViewer] Rendering drei Splat with URL:', url);
-  console.log('[GaussianSplatViewer] Position:', position, 'Scale:', scale, 'TestMode:', testMode);
-
-  return (
-    <Suspense fallback={null}>
-      <Splat
-        src={url}
-        position={position}
-        scale={scale}
-      />
-    </Suspense>
-  );
+  // Helper function to clean up SplatMesh
+  const cleanupSplatMesh = () => {
+    if (splatMeshRef.current) {
+      scene.remove(splatMeshRef.current);
+      splatMeshRef.current.dispose();
+      splatMeshRef.current = null;
+    }
+  };
+  
+  // Create and manage SplatMesh lifecycle
+  useEffect(() => {
+    if (!url) return;
+    
+    // Convert string fileType to SparkJS enum
+    const splatFileType = fileType ? FILE_TYPE_MAP[fileType.toLowerCase()] : undefined;
+    
+    console.log('[GaussianSplatViewer] Creating SplatMesh with URL:', url);
+    console.log('[GaussianSplatViewer] FileType:', fileType, '-> SplatFileType:', splatFileType);
+    console.log('[GaussianSplatViewer] Position:', position, 'Rotation:', rotation, 'Scale:', scale, 'TestMode:', testMode);
+    
+    // Clean up previous mesh if exists
+    cleanupSplatMesh();
+    
+    // For non-auto-detectable formats (ksplat, splat), use SplatLoader with explicit fileType
+    if (splatFileType && (splatFileType === SplatFileType.KSPLAT || splatFileType === SplatFileType.SPLAT)) {
+      console.log('[GaussianSplatViewer] Using SplatLoader with explicit fileType:', splatFileType);
+      
+      const loader = new SplatLoader();
+      loader.fileType = splatFileType; // Set fileType BEFORE loading
+      
+      loader.loadAsync(url)
+        .then((packedSplats) => {
+          console.log('[GaussianSplatViewer] SplatLoader loaded successfully, creating SplatMesh');
+          
+          const splatMesh = new SplatMesh({ packedSplats });
+          
+          // Set position, rotation and scale
+          splatMesh.position.set(position[0], position[1], position[2]);
+          splatMesh.rotation.set(rotation[0], rotation[1], rotation[2]);
+          splatMesh.scale.setScalar(scale);
+          
+          // Add to scene
+          scene.add(splatMesh);
+          splatMeshRef.current = splatMesh;
+          
+          setIsLoaded(true);
+          if (onLoadRef.current) {
+            onLoadRef.current(splatMesh);
+          }
+        })
+        .catch((error) => {
+          console.error('[GaussianSplatViewer] SplatLoader failed:', error);
+          if (onErrorRef.current) {
+            onErrorRef.current(error);
+          }
+        });
+    } else {
+      // For auto-detectable formats (ply, spz), use SplatMesh directly
+      console.log('[GaussianSplatViewer] Using SplatMesh directly for auto-detectable format');
+      
+      const splatMesh = new SplatMesh({
+        url: url,
+        onLoad: (mesh) => {
+          console.log('[GaussianSplatViewer] SplatMesh loaded successfully');
+          setIsLoaded(true);
+          if (onLoadRef.current) {
+            onLoadRef.current(mesh);
+          }
+        }
+      });
+      
+      // Set initial position, rotation and scale
+      splatMesh.position.set(position[0], position[1], position[2]);
+      splatMesh.rotation.set(rotation[0], rotation[1], rotation[2]);
+      splatMesh.scale.setScalar(scale);
+      
+      // Add to scene
+      scene.add(splatMesh);
+      splatMeshRef.current = splatMesh;
+      
+      // Handle initialization errors
+      splatMesh.initialized.catch((error) => {
+        console.error('[GaussianSplatViewer] Failed to load splat:', error);
+        if (onErrorRef.current) {
+          onErrorRef.current(error);
+        }
+      });
+    }
+    
+    // Cleanup on unmount or URL change
+    return () => {
+      cleanupSplatMesh();
+      setIsLoaded(false);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url, fileType, scene]);
+  
+  // Update position when props change
+  useEffect(() => {
+    if (splatMeshRef.current) {
+      splatMeshRef.current.position.set(position[0], position[1], position[2]);
+    }
+  }, [position]);
+  
+  // Update rotation when props change
+  useEffect(() => {
+    if (splatMeshRef.current) {
+      splatMeshRef.current.rotation.set(rotation[0], rotation[1], rotation[2]);
+    }
+  }, [rotation]);
+  
+  // Update scale when props change
+  useEffect(() => {
+    if (splatMeshRef.current) {
+      splatMeshRef.current.scale.setScalar(scale);
+    }
+  }, [scale]);
+  
+  // Return null since we're managing the mesh directly in the scene
+  // (SplatMesh is added to scene imperatively, not via JSX)
+  return null;
 }
 
 export default GaussianSplatViewer;
+
+
+
+

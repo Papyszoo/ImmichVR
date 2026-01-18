@@ -35,7 +35,22 @@ function GaussianSplatViewer({
   const splatMeshRef = useRef(null);
   const [isLoaded, setIsLoaded] = useState(false);
   
+  // Store callbacks in refs to avoid stale closures
+  const onLoadRef = useRef(onLoad);
+  const onErrorRef = useRef(onError);
+  useEffect(() => { onLoadRef.current = onLoad; }, [onLoad]);
+  useEffect(() => { onErrorRef.current = onError; }, [onError]);
+  
   const url = testMode ? TEST_SPLAT_URL : splatUrl;
+  
+  // Helper function to clean up SplatMesh
+  const cleanupSplatMesh = () => {
+    if (splatMeshRef.current) {
+      scene.remove(splatMeshRef.current);
+      splatMeshRef.current.dispose();
+      splatMeshRef.current = null;
+    }
+  };
   
   // Create and manage SplatMesh lifecycle
   useEffect(() => {
@@ -45,11 +60,7 @@ function GaussianSplatViewer({
     console.log('[GaussianSplatViewer] Position:', position, 'Scale:', scale, 'TestMode:', testMode);
     
     // Clean up previous mesh if exists
-    if (splatMeshRef.current) {
-      scene.remove(splatMeshRef.current);
-      splatMeshRef.current.dispose();
-      splatMeshRef.current = null;
-    }
+    cleanupSplatMesh();
     
     // Create new SplatMesh
     const splatMesh = new SplatMesh({
@@ -57,13 +68,13 @@ function GaussianSplatViewer({
       onLoad: (mesh) => {
         console.log('[GaussianSplatViewer] SplatMesh loaded successfully');
         setIsLoaded(true);
-        if (onLoad) {
-          onLoad(mesh);
+        if (onLoadRef.current) {
+          onLoadRef.current(mesh);
         }
       }
     });
     
-    // Set position and scale
+    // Set initial position and scale
     splatMesh.position.set(position[0], position[1], position[2]);
     splatMesh.scale.setScalar(scale);
     
@@ -74,21 +85,18 @@ function GaussianSplatViewer({
     // Handle initialization errors
     splatMesh.initialized.catch((error) => {
       console.error('[GaussianSplatViewer] Failed to load splat:', error);
-      if (onError) {
-        onError(error);
+      if (onErrorRef.current) {
+        onErrorRef.current(error);
       }
     });
     
     // Cleanup on unmount or URL change
     return () => {
-      if (splatMeshRef.current) {
-        scene.remove(splatMeshRef.current);
-        splatMeshRef.current.dispose();
-        splatMeshRef.current = null;
-      }
+      cleanupSplatMesh();
       setIsLoaded(false);
     };
-  }, [url, scene, onLoad, onError]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url, scene]);
   
   // Update position and scale when props change
   useEffect(() => {

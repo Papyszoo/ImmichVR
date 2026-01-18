@@ -781,6 +781,7 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
                 {splatUrl && (splatFormat === 'ksplat' || splatFormat === 'splat' || splatFormat === 'ply' || splatFormat === 'spz') && (
                   <GaussianSplatViewer
                     splatUrl={splatUrl}
+                    fileType={splatFormat}  /* Explicit format for blob URLs (required for ksplat, splat) */
                     testMode={false}  /* Using our splat file */
                     position={[0, 1.5, 0]}  /* Center splat at viewer position for immersive experience */
                     rotation={[Math.PI, 0, 0]}  /* Flip 180° around X axis to fix upside-down orientation */
@@ -800,7 +801,7 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
                   onRemove={handleRemoveFile}
                   onSelect={handleSelectDepth}
                   onConvert={handleConvert}
-                  position={[1.2, 1.6, -settings.wallDistance]}
+                  position={[1.7, 1.6, -settings.wallDistance]}
                 />
              </group>
           )}

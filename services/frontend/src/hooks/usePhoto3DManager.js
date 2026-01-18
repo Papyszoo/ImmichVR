@@ -18,7 +18,7 @@ import { useMemo } from 'react';
  * @param {boolean} isDownloaded - Whether the model is downloaded
  * @returns {Object} Status object with status, fileId, and action flags
  */
-function determineModelStatus(modelKey, generatedFiles, isDownloaded) {
+function determineModelStatus(modelKey, generatedFiles, isDownloaded, modelType = 'depth') {
   // Find files for this model
   const modelFiles = generatedFiles.filter(f => f.modelKey === modelKey);
   
@@ -53,10 +53,23 @@ function determineModelStatus(modelKey, generatedFiles, isDownloaded) {
     };
   }
   
-  // Check for raw format that needs conversion
+  // For splat models, PLY is a usable format (raw but viewable)
   const hasPly = modelFiles.some(f => f.format === 'ply');
   if (hasPly) {
     const plyFile = modelFiles.find(f => f.format === 'ply');
+    
+    // For splat models (like SHARP), PLY is ready to use
+    if (modelType === 'splat') {
+      return {
+        status: 'ready',
+        fileId: plyFile.id,
+        canGenerate: false,
+        canConvert: false, // Conversion is handled by KSPLAT virtual entry
+        canRemove: true,
+      };
+    }
+    
+    // For depth models, PLY needs conversion (shouldn't happen normally)
     return {
       status: 'can_convert',
       fileId: plyFile.id,
@@ -91,15 +104,18 @@ export function usePhoto3DManager({ generatedFiles = [], availableModels = [], p
       return [];
     }
     
+    const options = [];
+    
     // Map each available model to a view option
-    return availableModels.map(model => {
+    availableModels.forEach(model => {
       const isDownloaded = model.is_downloaded || false;
-      const statusInfo = determineModelStatus(model.key, generatedFiles, isDownloaded);
+      const modelType = model.type || 'depth';
+      const statusInfo = determineModelStatus(model.key, generatedFiles, isDownloaded, modelType);
       
-      return {
+      options.push({
         key: model.key,
         name: model.name || model.key,
-        type: model.type || 'depth',
+        type: modelType,
         params: model.params_size || '',
         status: statusInfo.status,
         fileId: statusInfo.fileId,
@@ -107,8 +123,83 @@ export function usePhoto3DManager({ generatedFiles = [], availableModels = [], p
         canConvert: statusInfo.canConvert,
         canRemove: statusInfo.canRemove,
         isDownloaded,
-      };
+      });
+      
+      // If this is SHARP model, check if we should create virtual KSPLAT and SPLAT entries
+      if (model.key === 'sharp' && model.type === 'splat') {
+        const sharpFiles = generatedFiles.filter(f => f.modelKey === 'sharp');
+        const hasPly = sharpFiles.some(f => f.format === 'ply');
+        
+        // Only show conversion entries if SHARP PLY has been generated
+        if (hasPly) {
+          // KSPLAT entry (compressed format)
+          const ksplatFile = sharpFiles.find(f => f.format === 'ksplat');
+          if (ksplatFile) {
+            options.push({
+              key: 'ksplat',
+              name: 'KSPLAT',
+              type: 'splat',
+              params: 'Compressed',
+              status: 'ready',
+              fileId: ksplatFile.id,
+              canGenerate: false,
+              canConvert: false,
+              canRemove: true,
+              isDownloaded: true,
+              isVirtual: true,
+            });
+          } else {
+            options.push({
+              key: 'ksplat',
+              name: 'KSPLAT',
+              type: 'splat',
+              params: 'Compressed',
+              status: 'missing',
+              fileId: null,
+              canGenerate: true,
+              canConvert: false,
+              canRemove: false,
+              isDownloaded: true,
+              isVirtual: true,
+            });
+          }
+          
+          // SPLAT entry (standard format, more compatible with drei)
+          const splatFile = sharpFiles.find(f => f.format === 'splat');
+          if (splatFile) {
+            options.push({
+              key: 'splat',
+              name: 'SPLAT',
+              type: 'splat',
+              params: 'Standard',
+              status: 'ready',
+              fileId: splatFile.id,
+              canGenerate: false,
+              canConvert: false,
+              canRemove: true,
+              isDownloaded: true,
+              isVirtual: true,
+            });
+          } else {
+            options.push({
+              key: 'splat',
+              name: 'SPLAT',
+              type: 'splat',
+              params: 'Standard',
+              status: 'missing',
+              fileId: null,
+              canGenerate: true,
+              canConvert: false,
+              canRemove: false,
+              isDownloaded: true,
+              isVirtual: true,
+            });
+          }
+        }
+      }
     });
+    
+    return options;
   }, [generatedFiles, availableModels, photoId]);
   
   return {

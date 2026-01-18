@@ -210,6 +210,95 @@ router.delete('/:id/files/:fileId', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/assets/:id/convert
+ * Convert PLY to KSPLAT format
+ */
+router.post('/:id/convert', async (req, res) => {
+  const { id } = req.params;
+  const { from = 'ply', to = 'ksplat' } = req.body;
+  
+  console.log(`[Convert] Converting ${from} to ${to} for ${id}...`);
+  
+  try {
+    // Find the media_item_id
+    let mediaItemId;
+    const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+    
+    if (uuidRegex.test(id)) {
+      const check = await pool.query('SELECT id FROM media_items WHERE id = $1', [id]);
+      if (check.rows.length > 0) {
+        mediaItemId = check.rows[0].id;
+      }
+    }
+    
+    if (!mediaItemId) {
+      const lookup = await pool.query('SELECT id FROM media_items WHERE immich_asset_id = $1', [id]);
+      if (lookup.rows.length > 0) {
+        mediaItemId = lookup.rows[0].id;
+      } else {
+        return res.status(404).json({ error: 'Photo not found' });
+      }
+    }
+    
+    // Find PLY file
+    const plyResult = await pool.query(`
+      SELECT id, file_path, model_key FROM generated_assets_3d
+      WHERE media_item_id = $1 AND format = 'ply' AND asset_type = 'splat'
+    `, [mediaItemId]);
+    
+    if (plyResult.rows.length === 0) {
+      return res.status(404).json({ error: 'No PLY file found to convert' });
+    }
+    
+    const plyFile = plyResult.rows[0];
+    const plyFilePath = plyFile.file_path;
+    const modelKey = plyFile.model_key;
+    
+    // Check if target format already exists
+    const existingCheck = await pool.query(`
+      SELECT id FROM generated_assets_3d
+      WHERE media_item_id = $1 AND format = $2 AND asset_type = 'splat'
+    `, [mediaItemId, to]);
+    
+    if (existingCheck.rows.length > 0) {
+      return res.json({ 
+        success: true, 
+        message: `${to.toUpperCase()} already exists`,
+        status: 'already_converted'
+      });
+    }
+    
+    // Trigger conversion based on target format
+    try {
+      let outputPath;
+      if (to === 'splat') {
+        outputPath = await convertPlyToSplat(plyFilePath, mediaItemId, modelKey);
+      } else {
+        // Default to ksplat
+        outputPath = await convertPlyToKsplat(plyFilePath, mediaItemId, modelKey);
+      }
+      res.json({ 
+        success: true, 
+        message: 'Conversion complete',
+        status: 'converted',
+        format: to,
+        outputPath 
+      });
+    } catch (convErr) {
+      console.error('[Convert] Conversion failed:', convErr.message);
+      res.status(500).json({ 
+        error: 'Conversion failed', 
+        message: convErr.message 
+      });
+    }
+    
+  } catch (error) {
+    console.error('Error in conversion:', error);
+    res.status(500).json({ error: 'Failed to convert file' });
+  }
+});
+
 
 
 // --- Helper Functions ---
@@ -448,14 +537,14 @@ async function convertPlyToKsplat(plyFilePath, mediaItemId, modelKey) {
     console.log(`[Splat] Converting ${plyFilePath} to .ksplat...`);
     
     return new Promise((resolve, reject) => {
-        // Use npx to run the gaussian-splats-3d converter
-        const proc = spawn('npx', [
-            'gaussian-splats-3d', 
-            plyFilePath, 
+        // Use our local conversion script
+        const converterPath = path.join(__dirname, '../scripts/convert-ply-to-ksplat.js');
+        const proc = spawn('node', [
+            converterPath,
+            plyFilePath,
             ksplatFilePath
         ], {
-            cwd: process.cwd(),
-            shell: true
+            cwd: process.cwd()
         });
         
         let stdout = '';
@@ -495,5 +584,64 @@ async function convertPlyToKsplat(plyFilePath, mediaItemId, modelKey) {
         });
     });
 }
+
+/**
+ * Convert .ply to standard .splat format
+ * This is more compatible with drei's Splat component
+ */
+async function convertPlyToSplat(plyFilePath, mediaItemId, modelKey) {
+    const splatFilePath = plyFilePath.replace('.ply', '.splat');
+    
+    console.log(`[Splat] Converting ${plyFilePath} to .splat...`);
+    
+    return new Promise((resolve, reject) => {
+        // Use our local conversion script
+        const converterPath = path.join(__dirname, '../scripts/convert-ply-to-splat.js');
+        const proc = spawn('node', [
+            converterPath,
+            plyFilePath,
+            splatFilePath
+        ], {
+            cwd: process.cwd()
+        });
+        
+        let stdout = '';
+        let stderr = '';
+        
+        proc.stdout.on('data', (data) => { stdout += data.toString(); });
+        proc.stderr.on('data', (data) => { stderr += data.toString(); });
+        
+        proc.on('close', async (code) => {
+            if (code === 0) {
+                try {
+                    // Record .splat in database
+                    const stats = await fs.stat(splatFilePath);
+                    await pool.query(
+                        `INSERT INTO generated_assets_3d 
+                         (media_item_id, asset_type, model_key, format, file_path, file_size, metadata)
+                         VALUES ($1, 'splat', $2, 'splat', $3, $4, $5)
+                         ON CONFLICT (media_item_id, asset_type, model_key, format) 
+                         DO UPDATE SET 
+                           file_path = EXCLUDED.file_path,
+                           file_size = EXCLUDED.file_size,
+                           generated_at = NOW()`,
+                        [mediaItemId, modelKey, splatFilePath, stats.size, JSON.stringify({ converted_from: 'ply' })]
+                    );
+                    console.log(`[Splat] Conversion complete: ${splatFilePath} (${stats.size} bytes)`);
+                    resolve(splatFilePath);
+                } catch (err) {
+                    reject(new Error(`Failed to record splat: ${err.message}`));
+                }
+            } else {
+                reject(new Error(`Conversion failed (exit ${code}): ${stderr || stdout}`));
+            }
+        });
+        
+        proc.on('error', (err) => {
+            reject(new Error(`Failed to spawn converter: ${err.message}`));
+        });
+    });
+}
+
 
 module.exports = router;

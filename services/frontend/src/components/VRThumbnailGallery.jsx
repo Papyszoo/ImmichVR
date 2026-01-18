@@ -13,18 +13,19 @@ import CameraController from './gallery/CameraController';
 import ThumbnailGrid from './gallery/ThumbnailGrid';
 import TimelineScrubber from './gallery/TimelineScrubber';
 import VRPhoto from './VRPhoto'; // Integrated for Viewer
+import GaussianSplatViewer from './GaussianSplatViewer';
 import styles from './gallery/galleryStyles';
 
 import { usePhotoViewerAnimation } from '../hooks/usePhotoViewerAnimation';
 import { usePhoto3DManager } from '../hooks/usePhoto3DManager';
-import { generateAsset, generateDepthWithModel, getPhotoFiles, deletePhotoFile, getAIModels, getSettings } from '../services/api';
+import { generateAsset, generateDepthWithModel, getPhotoFiles, deletePhotoFile, getAIModels, getSettings, convertPlyToKsplat } from '../services/api';
 
 
 /**
  * Wrapper component that uses the usePhoto3DManager hook
  * to provide viewOptions to the Photo3DViewsPanel presentation component
  */
-function Photo3DViewsPanelWrapper({ photoId, photoFiles, availableModels, onGenerate, onRemove, onSelect, activeModel, position }) {
+function Photo3DViewsPanelWrapper({ photoId, photoFiles, availableModels, onGenerate, onRemove, onSelect, onConvert, activeModel, position }) {
   const { viewOptions } = usePhoto3DManager({
     generatedFiles: photoFiles,
     availableModels,
@@ -38,7 +39,7 @@ function Photo3DViewsPanelWrapper({ photoId, photoFiles, availableModels, onGene
       onGenerate={onGenerate}
       onRemove={onRemove}
       onSelect={onSelect}
-      onConvert={() => console.log('Convert not implemented yet')}
+      onConvert={onConvert}
       position={position}
     />
   );
@@ -106,7 +107,12 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
   const [downloadedModels, setDownloadedModels] = useState(['small']); // Keep for compatibility if needed
   const [availableModels, setAvailableModels] = useState([]); // Full model metadata
   const [generatingModel, setGeneratingModel] = useState(null);
+  const generatingRef = useRef(false); // Synchronous lock to prevent multiple concurrent generate calls
+  const [isConverting, setIsConverting] = useState(false); // Prevent duplicate conversion requests
+  const selectingRef = useRef(false); // Synchronous lock to prevent multiple concurrent select/download calls
   const [activeDepthModel, setActiveDepthModel] = useState(null); // Currently applied depth model
+  const [splatUrl, setSplatUrl] = useState(null); // URL for active Gaussian Splat
+  const [splatFormat, setSplatFormat] = useState('ply'); // Format of active splat (ply, splat, ksplat)
   
   // Auto-generate depth when entering photo view
   useEffect(() => {
@@ -166,10 +172,17 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
       return;
     }
     
+    // Clear active model and splat when photo changes
+    setActiveDepthModel(null);
+    if (splatUrl) {
+      URL.revokeObjectURL(splatUrl);
+      setSplatUrl(null);
+    }
+    
     getPhotoFiles(selectedPhotoId)
       .then(data => setPhotoFiles(data.files || []))
       .catch(err => console.warn('Failed to fetch photo files:', err));
-  }, [selectedPhotoId]);
+  }, [selectedPhotoId]); // Note: intentionally not including splatUrl to avoid loop
 
   // Fetch available models on mount AND when entering viewer mode
   // Re-fetching when selectedPhotoId changes ensures the 3D Views panel
@@ -193,10 +206,48 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
   
   // Handle generate asset with specific model
   const handleGenerateDepth = useCallback(async (modelKey) => {
-    if (!selectedPhotoId || generatingModel) return;
+    // Synchronous guard using ref (state updates are async and can allow multiple calls through)
+    if (!selectedPhotoId || generatingRef.current) {
+      console.log(`[handleGenerateDepth] Blocked: selectedPhotoId=${selectedPhotoId}, generatingRef.current=${generatingRef.current}`);
+      return;
+    }
     
+    // Check if asset already exists (prevent duplicate generation)
+    const existingFile = photoFiles.find(f => f.modelKey === modelKey);
+    if (existingFile) {
+      console.log(`Asset for ${modelKey} already exists, skipping generation`);
+      return;
+    }
+    
+    // Set synchronous lock immediately
+    generatingRef.current = true;
     setGeneratingModel(modelKey);
+    
     try {
+      // Special handling for KSPLAT and SPLAT virtual entries - these trigger conversion, not generation
+      if (modelKey === 'ksplat' || modelKey === 'splat') {
+        console.log(`[VRThumbnailGallery] Converting PLY to ${modelKey.toUpperCase()}`);
+        
+        // Call convert endpoint
+        const response = await fetch(`/api/assets/${selectedPhotoId}/convert`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ from: 'ply', to: modelKey })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Conversion failed: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log(`[VRThumbnailGallery] Conversion result:`, result);
+        
+        // Refresh files list
+        const data = await getPhotoFiles(selectedPhotoId);
+        setPhotoFiles(data.files || []);
+        return;
+      }
+      
       // Lookup model type from availableModels
       const model = availableModels.find(m => m.key === modelKey);
       if (!model) {
@@ -210,10 +261,11 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
       // Call generateAsset with correct type
       const blob = await generateAsset(selectedPhotoId, assetType, modelKey);
       
-      // For depth maps, cache the blob URL
+      // For depth maps, cache the blob URL and set as active immediately
       if (assetType === 'depth') {
         const url = URL.createObjectURL(blob);
         setDepthCache(prev => ({ ...prev, [selectedPhotoId]: url }));
+        setActiveDepthModel(modelKey);
       }
       
       // Refresh files list
@@ -222,9 +274,10 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
     } catch (err) {
       console.error('Failed to generate asset:', err);
     } finally {
+      generatingRef.current = false;
       setGeneratingModel(null);
     }
-  }, [selectedPhotoId, generatingModel, availableModels]);
+  }, [selectedPhotoId, availableModels, photoFiles]);
   
   // Handle remove generated file
   const handleRemoveFile = useCallback(async (modelKey) => {
@@ -255,36 +308,150 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
     }
   }, [selectedPhotoId, photoFiles, activeDepthModel]);
   
-  // Handle selecting a depth model to apply
+  // Handle selecting a model to apply (depth or splat)
   const handleSelectDepth = useCallback(async (modelKey) => {
-    if (!selectedPhotoId) return;
-    
-    // Find the depth file for this model
-    const file = photoFiles.find(f => f.modelKey === modelKey && f.type === 'depth');
-    if (!file) {
-      console.warn('No depth file found for model:', modelKey);
+    // Synchronous guard to prevent multiple concurrent downloads
+    if (!selectedPhotoId || selectingRef.current) {
+      console.log(`[handleSelectDepth] Blocked: selectedPhotoId=${selectedPhotoId}, selectingRef.current=${selectingRef.current}`);
       return;
     }
     
-    // Fetch the depth map and add to cache
+    selectingRef.current = true;
+    
     try {
-      const response = await fetch(`/api/assets/${selectedPhotoId}/files/${file.id}/download`);
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        setDepthCache(prev => ({ ...prev, [selectedPhotoId]: url }));
-        setActiveDepthModel(modelKey);
+      // Find the file for this model
+      // Special handling for virtual KSPLAT/SPLAT entries - the file has modelKey 'sharp' but different formats
+      let file;
+      if (modelKey === 'ksplat') {
+        // KSPLAT is a virtual entry - look for format 'ksplat' with modelKey 'sharp'
+        file = photoFiles.find(f => f.modelKey === 'sharp' && f.format === 'ksplat');
+      } else if (modelKey === 'splat') {
+        // SPLAT is a virtual entry - look for format 'splat' with modelKey 'sharp'
+        file = photoFiles.find(f => f.modelKey === 'sharp' && f.format === 'splat');
+      } else if (modelKey === 'sharp') {
+        // For SHARP model, specifically look for PLY format to avoid confusion with KSPLAT/SPLAT
+        file = photoFiles.find(f => f.modelKey === 'sharp' && f.format === 'ply');
       } else {
-        // If download endpoint doesn't exist, try constructing URL from file path
-        // For now, just set active model - the photo may already have depth
-        setActiveDepthModel(modelKey);
+        // For other models, use standard lookup
+        file = photoFiles.find(f => f.modelKey === modelKey);
       }
-    } catch (err) {
-      console.error('Failed to fetch depth file:', err);
-      // Fallback: just set active model
-      setActiveDepthModel(modelKey);
+      
+      if (!file) {
+        console.warn('No file found for model:', modelKey);
+        return;
+      }
+      
+      // For depth maps, fetch and add to cache
+      if (file.type === 'depth') {
+        // Clear any active splat
+        if (splatUrl) {
+          URL.revokeObjectURL(splatUrl);
+          setSplatUrl(null);
+        }
+        
+        try {
+          const response = await fetch(`/api/assets/${selectedPhotoId}/files/${file.id}/download`);
+          if (response.ok) {
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            setDepthCache(prev => ({ ...prev, [selectedPhotoId]: url }));
+            setActiveDepthModel(modelKey);
+          } else {
+            // If download endpoint doesn't exist, try constructing URL from file path
+            // For now, just set active model - the photo may already have depth
+            setActiveDepthModel(modelKey);
+          }
+        } catch (err) {
+          console.error('Failed to fetch depth file:', err);
+          // Fallback: just set active model
+          setActiveDepthModel(modelKey);
+        }
+      } else if (file.type === 'splat') {
+        // For splat models, fetch the splat file
+        console.log('Selected splat model:', modelKey, 'file:', file);
+        
+        // PLY files are too large for web viewing - only KSPLAT is supported
+        if (file.format === 'ply') {
+          console.log('[Splat] PLY format detected. PLY files are too large for web viewing (~66MB). Please convert to KSPLAT first.');
+          setActiveDepthModel(modelKey);
+          // Don't try to load PLY - just mark it as active so user knows it's selected
+          // Clear any existing splat URL
+          if (splatUrl) {
+            URL.revokeObjectURL(splatUrl);
+            setSplatUrl(null);
+          }
+          return;
+        }
+        
+        try {
+          const response = await fetch(`/api/assets/${selectedPhotoId}/files/${file.id}/download`);
+          console.log('[Splat] Download response:', response.status, response.statusText);
+          if (response.ok) {
+            const blob = await response.blob();
+            console.log('[Splat] Blob size:', blob.size, 'type:', blob.type);
+            
+            // Check for empty blob (304 Not Modified responses may not have body)
+            if (blob.size === 0) {
+              console.error('[Splat] Downloaded blob is empty - file may not exist or response was cached without body');
+              return;
+            }
+            
+            // Revoke previous splat URL if any
+            if (splatUrl) {
+              URL.revokeObjectURL(splatUrl);
+            }
+            
+            const url = URL.createObjectURL(blob);
+            setSplatUrl(url);
+            setSplatFormat(file.format || 'ply'); // Set format from file metadata
+            setActiveDepthModel(modelKey);
+            
+            // Clear depth cache for this photo so VRPhoto doesn't show depth view while splat is active
+            setDepthCache(prev => {
+              const newCache = { ...prev };
+              delete newCache[selectedPhotoId];
+              return newCache;
+            });
+            
+            console.log('[Splat] Loaded splat URL:', url, 'format:', file.format, 'blob size:', blob.size);
+          } else {
+            console.error('Failed to download splat file, status:', response.status);
+          }
+        } catch (err) {
+          console.error('Failed to fetch splat file:', err);
+        }
+      }
+    } finally {
+      selectingRef.current = false;
     }
-  }, [selectedPhotoId, photoFiles]);
+  }, [selectedPhotoId, photoFiles, splatUrl]);
+  
+  // Handle KSPLAT conversion
+  const handleConvert = useCallback(async (modelKey) => {
+    if (modelKey === 'ksplat') {
+      // Prevent duplicate requests
+      if (isConverting) {
+        console.log('Conversion already in progress, skipping...');
+        return;
+      }
+      
+      console.log('KSPLAT conversion triggered - calling backend...');
+      setIsConverting(true);
+      
+      try {
+        const result = await convertPlyToKsplat(selectedPhotoId);
+        console.log('[Convert] Result:', result);
+        
+        // Refresh files to see the new KSPLAT
+        const data = await getPhotoFiles(selectedPhotoId);
+        setPhotoFiles(data.files || []);
+      } catch (err) {
+        console.error('Conversion failed:', err);
+      } finally {
+        setIsConverting(false);
+      }
+    }
+  }, [selectedPhotoId, isConverting]);
 
   
   // Track VR session state
@@ -607,8 +774,8 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
           {/* Render Viewer if photo SELECTED */}
           {selectedPhotoId && (
              <group position={[0, 0, 0]}>
-                {/* Render current and adjacent photos */}
-                {photosWithDepth.map((photo, index) => {
+                {/* Render current and adjacent photos - HIDE when splat is active */}
+                {!(splatUrl && (splatFormat === 'ksplat' || splatFormat === 'splat')) && photosWithDepth.map((photo, index) => {
                    // Only render if close to selected index (optimization)
                    if (Math.abs(index - selectedIndex) > 3) return null;
                    return (
@@ -622,6 +789,18 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
                    );
                 })}
                 
+                {/* Gaussian Splat Viewer - renders for KSPLAT and SPLAT formats (PLY too large for web viewing) */}
+                {splatUrl && (splatFormat === 'ksplat' || splatFormat === 'splat') && (
+                  <GaussianSplatViewer
+                    splatUrl={splatUrl}
+                    testMode={false}  /* Using our converted .splat file */
+                    position={[0, 1.5, -5]}
+                    scale={0.01}
+                    onLoad={() => console.log(`[Splat] Viewer loaded (${splatFormat}) at [0, 1.5, -5] scale=0.01`)}
+                    onError={(err) => console.error('[Splat] Viewer error:', err)}
+                  />
+                )}
+                
                 {/* 3D Views Panel on right side of current photo */}
                 <Photo3DViewsPanelWrapper
                   photoId={selectedPhotoId}
@@ -631,6 +810,7 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
                   onGenerate={handleGenerateDepth}
                   onRemove={handleRemoveFile}
                   onSelect={handleSelectDepth}
+                  onConvert={handleConvert}
                   position={[1.2, 1.6, -settings.wallDistance]}
                 />
              </group>

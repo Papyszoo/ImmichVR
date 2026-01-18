@@ -55,16 +55,24 @@ const IconButton = ({ icon, onClick, color = '#FFFFFF', title = '' }) => (
  * Now accepts a viewOption object with pre-computed status
  */
 const ModelRow = ({ viewOption, isActive, onGenerate, onRemove, onConvert, onSelect }) => {
-  const { key, name, params, status, canGenerate, canRemove, canConvert } = viewOption;
+  const { key, name, params, status, canGenerate, canRemove, canConvert, isVirtual } = viewOption;
   
   // Determine visual state
   const isReady = status === 'ready';
   const isNotInstalled = status === 'not_installed';
   const isMissing = status === 'missing';
   
-  // Click on the row to select this view (if ready)
+  // Click on the row to generate (if missing) or select (if ready)
   const handleRowClick = () => {
-    if (isReady && onSelect) {
+    if (isMissing && canGenerate) {
+      // For virtual KSPLAT entry, trigger conversion via onConvert
+      if (isVirtual && key === 'ksplat') {
+        onConvert && onConvert(key);
+      } else {
+        // For regular models, trigger generation
+        onGenerate && onGenerate(key);
+      }
+    } else if (isReady && onSelect) {
       onSelect(key);
     }
   };
@@ -80,7 +88,7 @@ const ModelRow = ({ viewOption, isActive, onGenerate, onRemove, onConvert, onSel
       justifyContent="space-between"
       paddingX={12}
       borderRadius={8}
-      cursor={isReady ? 'pointer' : 'default'}
+      cursor={(isReady || isMissing) ? 'pointer' : 'default'}
       onClick={handleRowClick}
     >
       <Container flexDirection="row" alignItems="center" gap={8}>
@@ -104,15 +112,6 @@ const ModelRow = ({ viewOption, isActive, onGenerate, onRemove, onConvert, onSel
           <Text color={COLORS.textMuted} fontSize={11}>Not installed</Text>
         ) : isReady ? (
           <>
-            {/* Select button to apply this depth */}
-            {!isActive && (
-              <IconButton 
-                icon={ICONS.apply} 
-                onClick={(e) => { e.stopPropagation(); onSelect && onSelect(key); }} 
-                color={COLORS.success}
-                title="Apply this depth"
-              />
-            )}
             {/* Remove button */}
             <IconButton 
               icon={ICONS.remove} 
@@ -121,20 +120,15 @@ const ModelRow = ({ viewOption, isActive, onGenerate, onRemove, onConvert, onSel
               title="Remove"
             />
           </>
-        ) : canConvert ? (
-          <IconButton 
-            icon={ICONS.convert} 
-            onClick={(e) => { e.stopPropagation(); onConvert(key); }} 
-            color={COLORS.warning}
-            title="Convert"
-          />
-        ) : canGenerate ? (
-          <IconButton 
-            icon={ICONS.generate} 
-            onClick={(e) => { e.stopPropagation(); onGenerate(key); }} 
-            color={COLORS.primary}
-            title="Generate"
-          />
+        ) : isMissing && canGenerate ? (
+          <>
+            {/* For KSPLAT virtual entry, show generate as conversion */}
+            {isVirtual && key === 'ksplat' ? (
+              <Text color={COLORS.textMuted} fontSize={11}>Click to convert</Text>
+            ) : (
+              <Text color={COLORS.textMuted} fontSize={11}>Click to generate</Text>
+            )}
+          </>
         ) : null}
       </Container>
     </Container>

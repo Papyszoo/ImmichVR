@@ -261,5 +261,17 @@ export const generateDepthWithModel = async (assetId, modelKey = 'small') => {
   return generateAsset(assetId, 'depth', modelKey);
 };
 
+/**
+ * Convert PLY to KSPLAT format
+ * @param {string} assetId - The asset ID
+ * @returns {Promise<Object>} - Conversion result
+ */
+export const convertPlyToKsplat = async (assetId) => {
+  const response = await api.post(`/assets/${assetId}/convert`, { from: 'ply', to: 'ksplat' }, {
+    timeout: 120000, // 2 minutes for conversion
+  });
+  return response.data;
+};
+
 export default api;
 

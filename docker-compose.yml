@@ -30,6 +30,7 @@ services:
       AI_SERVICE_PORT: ${AI_SERVICE_PORT:-5000}
     volumes:
       - ./data/ai-cache:/root/.cache/huggingface
+      - ./data/ai-cache/torch:/root/.cache/torch
     networks:
       - immichvr-network
     depends_on:

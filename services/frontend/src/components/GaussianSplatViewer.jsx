@@ -19,6 +19,7 @@ const TEST_SPLAT_URL = "https://sparkjs.dev/assets/splats/butterfly.spz";
  * 
  * @param {string} splatUrl - URL to the splat file (.ply, .ksplat, .splat, .spz)
  * @param {Array} position - [x, y, z] position in 3D space
+ * @param {Array} rotation - [x, y, z] rotation in radians
  * @param {number} scale - Uniform scale factor
  * @param {boolean} testMode - When true, loads a known-good test splat
  * @param {Function} onLoad - Callback when splat finishes loading
@@ -27,6 +28,7 @@ const TEST_SPLAT_URL = "https://sparkjs.dev/assets/splats/butterfly.spz";
 function GaussianSplatViewer({ 
   splatUrl, 
   position = [0, 1.5, -2],
+  rotation = [0, 0, 0],
   scale = 1.0,
   testMode = false,
   onLoad,
@@ -58,7 +60,7 @@ function GaussianSplatViewer({
     if (!url) return;
     
     console.log('[GaussianSplatViewer] Creating SplatMesh with URL:', url);
-    console.log('[GaussianSplatViewer] Position:', position, 'Scale:', scale, 'TestMode:', testMode);
+    console.log('[GaussianSplatViewer] Position:', position, 'Rotation:', rotation, 'Scale:', scale, 'TestMode:', testMode);
     
     // Clean up previous mesh if exists
     cleanupSplatMesh();
@@ -75,8 +77,9 @@ function GaussianSplatViewer({
       }
     });
     
-    // Set initial position and scale
+    // Set initial position, rotation and scale
     splatMesh.position.set(position[0], position[1], position[2]);
+    splatMesh.rotation.set(rotation[0], rotation[1], rotation[2]);
     splatMesh.scale.setScalar(scale);
     
     // Add to scene
@@ -99,13 +102,21 @@ function GaussianSplatViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, scene]);
   
-  // Update position and scale when props change
+  // Update position when props change
   useEffect(() => {
     if (splatMeshRef.current) {
       splatMeshRef.current.position.set(position[0], position[1], position[2]);
     }
   }, [position]);
   
+  // Update rotation when props change
+  useEffect(() => {
+    if (splatMeshRef.current) {
+      splatMeshRef.current.rotation.set(rotation[0], rotation[1], rotation[2]);
+    }
+  }, [rotation]);
+  
+  // Update scale when props change
   useEffect(() => {
     if (splatMeshRef.current) {
       splatMeshRef.current.scale.setScalar(scale);
@@ -118,3 +129,4 @@ function GaussianSplatViewer({
 }
 
 export default GaussianSplatViewer;
+

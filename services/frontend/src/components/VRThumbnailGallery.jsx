@@ -782,9 +782,10 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
                   <GaussianSplatViewer
                     splatUrl={splatUrl}
                     testMode={false}  /* Using our splat file */
-                    position={[0, 1.5, -5]}
-                    scale={0.01}
-                    onLoad={() => console.log(`[Splat] Viewer loaded (${splatFormat}) at [0, 1.5, -5] scale=0.01`)}
+                    position={[0, 1.5, 0]}  /* Center splat at viewer position for immersive experience */
+                    rotation={[Math.PI, 0, 0]}  /* Flip 180° around X axis to fix upside-down orientation */
+                    scale={0.1}
+                    onLoad={() => console.log(`[Splat] Viewer loaded (${splatFormat}) at [0, 1.5, 0] scale=0.1`)}
                     onError={(err) => console.error('[Splat] Viewer error:', err)}
                   />
                 )}

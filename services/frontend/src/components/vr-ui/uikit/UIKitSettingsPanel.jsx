@@ -152,26 +152,42 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
 
   const fetchModels = async () => {
     try {
-      // Fetch AI service model status (what's actually loaded and on disk)
-      const data = await getAIModels();
-      setCurrentLoadedModel(data.current_model);
+      // 1. Fetch source of truth from Database (includes metadata and download status)
+      const dbData = await getModels();
+      const dbModels = dbData.models || [];
       
-      const aiModels = data.models || [];
-      const mappedModels = aiModels.map(m => ({
-        ...m,
-        // Trust the is_downloaded flag from AI service (disk check)
-        status: m.is_downloaded ? 'downloaded' : 'not_downloaded',
-      }));
-      setModels(mappedModels);
-    } catch (err) {
-      console.warn('Failed to fetch AI models:', err);
-      // Fallback to database models if AI service fails
+      // 2. Fetch runtime status from AI Service (what's loaded in memory)
+      let aiModelsData = { current_model: null, models: [] };
       try {
-        const data = await getModels();
-        setModels(data.models || []);
+        aiModelsData = await getAIModels();
       } catch (e) {
-        console.warn('Failed to fetch models from DB:', e);
+        console.warn('Failed to fetch AI service status (service might be busy or starting):', e);
       }
+      
+      setCurrentLoadedModel(aiModelsData.current_model);
+      
+      // 3. Merge: Use DB models as base, overlay runtime info
+      const mergedModels = dbModels.map(dbModel => {
+        // Find corresponding runtime info if any
+        const runtimeInfo = aiModelsData.models?.find(m => m.key === dbModel.key);
+        
+        return {
+          ...dbModel,
+          // DB status is primary for 'downloaded' vs 'not_downloaded'
+          // API might return more granular 'downloading' state if we implemented it, 
+          // but for now DB is reliable for persistence.
+          
+          // Helper flags
+          is_loaded: aiModelsData.current_model === dbModel.key,
+          // If AI service reports it as downloaded, trust that too (e.g. manual file placement)
+          status: (runtimeInfo?.is_downloaded || dbModel.status === 'downloaded') ? 'downloaded' : 'not_downloaded'
+        };
+      });
+      
+      setModels(mergedModels);
+      
+    } catch (err) {
+      console.error('Failed to fetch models:', err);
     }
   };
 

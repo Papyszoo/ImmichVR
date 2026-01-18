@@ -83,12 +83,14 @@ async function ensureSchema() {
       await client.query(`ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS memory VARCHAR(50)`);
       await client.query(`ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS description TEXT`);
       await client.query(`ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS huggingface_id VARCHAR(100)`);
+      await client.query(`ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS type VARCHAR(20) NOT NULL DEFAULT 'depth'`);
       
       // Populate Data
       const models = [
         {
           key: 'small',
           name: 'Small',
+          type: 'depth',
           params: '25M',
           memory: '~100MB',
           description: 'Fastest, lower quality. Good for quick previews.',
@@ -97,6 +99,7 @@ async function ensureSchema() {
         {
           key: 'base',
           name: 'Base',
+          type: 'depth',
           params: '97M',
           memory: '~400MB',
           description: 'Balanced speed and quality. Recommended for most users.',
@@ -105,10 +108,20 @@ async function ensureSchema() {
         {
           key: 'large',
           name: 'Large',
+          type: 'depth',
           params: '335M',
           memory: '~1.3GB',
           description: 'Highest quality, slowest generation. Requires more VRAM.',
           huggingface_id: 'depth-anything/Depth-Anything-V2-Large-hf'
+        },
+        {
+          key: 'sharp',
+          name: 'SHARP',
+          type: 'splat',
+          params: '~2GB',
+          memory: '~4GB RAM',
+          description: 'Apple ml-sharp: Photorealistic 3D from single image. Outputs Gaussian Splat.',
+          huggingface_id: 'apple/ml-sharp'
         }
       ];
       
@@ -120,16 +133,17 @@ async function ensureSchema() {
             params = $2,
             memory = $3,
             description = $4,
-            huggingface_id = $5
-          WHERE model_key = $6
-        `, [m.name, m.params, m.memory, m.description, m.huggingface_id, m.key]);
+            huggingface_id = $5,
+            type = $6
+          WHERE model_key = $7
+        `, [m.name, m.params, m.memory, m.description, m.huggingface_id, m.type || 'depth', m.key]);
         
         // If no rows updated (and key didn't exist), insert it
         if (updateRes.rowCount === 0) {
            await client.query(`
-            INSERT INTO ai_models (model_key, status, name, params, memory, description, huggingface_id)
-            VALUES ($1, 'not_downloaded', $2, $3, $4, $5, $6)
-          `, [m.key, m.name, m.params, m.memory, m.description, m.huggingface_id]);
+            INSERT INTO ai_models (model_key, status, name, params, memory, description, huggingface_id, type)
+            VALUES ($1, 'not_downloaded', $2, $3, $4, $5, $6, $7)
+          `, [m.key, m.name, m.params, m.memory, m.description, m.huggingface_id, m.type || 'depth']);
         }
       }
       

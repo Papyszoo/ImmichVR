@@ -23,10 +23,12 @@ def list_models():
     models_list = []
     downloaded_models = model._get_downloaded_models()
     
+    # Add depth models
     for key, config in Config.AVAILABLE_MODELS.items():
         model_info = {
             "key": key,
             "name": config["name"],
+            "type": "depth",  # All models in Config.AVAILABLE_MODELS are depth models
             "params": config["params"],
             "memory": config["memory"],
             "description": config["description"],
@@ -35,6 +37,23 @@ def list_models():
             "is_downloaded": key in downloaded_models,
         }
         models_list.append(model_info)
+    
+    # Add SHARP model (splat generation)
+    try:
+        from ..models.sharp_model import sharp_model
+        models_list.append({
+            "key": "sharp",
+            "name": "SHARP",
+            "type": "splat",  # Splat generation model
+            "params": "~2GB",
+            "memory": "~4GB RAM",
+            "description": "Apple ml-sharp: Photorealistic 3D from single image. Outputs Gaussian Splat.",
+            "huggingface_id": "apple/ml-sharp",
+            "is_loaded": False,  # SHARP is not kept in memory, it's CLI-based
+            "is_downloaded": sharp_model.is_downloaded(),
+        })
+    except Exception as e:
+        logger.warning(f"Could not include SHARP model status: {e}")
     
     return jsonify({
         "models": models_list,

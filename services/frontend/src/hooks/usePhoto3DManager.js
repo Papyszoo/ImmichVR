@@ -34,14 +34,15 @@ function determineModelStatus(modelKey, generatedFiles, isDownloaded) {
   
   // Check for ready-to-use formats
   const hasReadyFormat = modelFiles.some(f => 
-    f.format === 'jpg' ||      // Depth map
-    f.format === 'splat' ||    // Web-ready splat
-    f.format === 'ksplat'      // Compressed splat
+    f.format === 'png' ||       // Depth map (PNG)
+    f.format === 'jpg' ||       // Depth map (JPEG)
+    f.format === 'splat' ||     // Web-ready splat
+    f.format === 'ksplat'       // Compressed splat (Quest 3 optimized)
   );
   
   if (hasReadyFormat) {
     const readyFile = modelFiles.find(f => 
-      f.format === 'jpg' || f.format === 'splat' || f.format === 'ksplat'
+      f.format === 'png' || f.format === 'jpg' || f.format === 'splat' || f.format === 'ksplat'
     );
     return {
       status: 'ready',

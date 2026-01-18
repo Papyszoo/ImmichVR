@@ -51,6 +51,25 @@ LGM	Slow	High	Good geometry.	Heavy, multi-stage pipeline.
 
     Badge System: Add [3D] (Splat) and [D] (Depth) badges to thumbnails using the new unified asset data.
 
+### 3.5 Real-time Model Download Progress
+
+**Problem**: Model downloads (especially SHARP ~2GB) timeout on frontend HTTP requests (30s default), leaving users uncertain about progress.
+
+**Solution**: Implement Socket.IO for real-time progress updates.
+
+**Implementation**:
+- Backend: Emit download progress events via Socket.IO during model downloads
+- Frontend: Listen to Socket.IO events and update UI with progress percentage
+- Settings Panel: Show progress bar instead of generic "downloading..." spinner
+- Error Handling: Display meaningful errors (network failure, out of disk space, etc.) instead of generic timeouts
+
+**Affected Files**:
+- `services/backend/src/routes/settings.routes.js` - Emit progress events
+- `services/ai/app/routes/splat.py` - Report download progress
+- `services/frontend/src/components/vr-ui/uikit/UIKitSettingsPanel.jsx` - Listen to Socket.IO events
+- `services/backend/package.json` - Add `socket.io` dependency
+- `services/frontend/package.json` - Add `socket.io-client` dependency
+
 🎥 Phase 4: Video Depth (Medium Priority)
 
 Goal: True temporal consistency for video playback using Video Depth Anything.

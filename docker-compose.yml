@@ -58,12 +58,14 @@ services:
       AI_SERVICE_URL: http://ai:5000
       UPLOAD_DIR: /app/data/uploads
       DEPTH_MAPS_DIR: /app/data/depth_maps
+      SPLATS_DIR: /app/data/splats
       AUTO_START_WORKER: ${AUTO_START_WORKER:-true}
       IMMICH_URL: ${IMMICH_URL}
       IMMICH_API_KEY: ${IMMICH_API_KEY}
     volumes:
       - ./data/uploads:/app/data/uploads
       - ./data/depth_maps:/app/data/depth_maps
+      - ./data/splats:/app/data/splats
     networks:
       - immichvr-network
     depends_on:

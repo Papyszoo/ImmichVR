@@ -131,8 +131,8 @@ router.get('/models', async (req, res) => {
         model_key,
         status,
         name,
-        params,
-        memory,
+        params_size as params,
+        vram_usage as memory,
         description,
         huggingface_id,
         download_progress,
@@ -276,10 +276,40 @@ router.post('/models/:key/download', async (req, res) => {
   const { key } = req.params;
   
   try {
-    const { apiGateway } = require('../services');
+    // Lookup model type from database
+    const modelResult = await pool.query(
+      'SELECT type FROM ai_models WHERE model_key = $1',
+      [key]
+    );
+    
+    if (modelResult.rows.length === 0) {
+      return res.status(404).json({ error: `Model ${key} not found` });
+    }
+    
+    const modelType = modelResult.rows[0].type;
+    const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://ai:5000';
+    
+    // Route to appropriate AI endpoint based on model type
+    let downloadUrl;
+    if (modelType === 'splat') {
+      downloadUrl = `${aiServiceUrl}/api/splat/download`;
+    } else {
+      // Default: depth model
+      downloadUrl = `${aiServiceUrl}/api/models/${key}/download`;
+    }
+    
+    console.log(`[Download] Model ${key} (type=${modelType}) -> ${downloadUrl}`);
     
     // Call AI service to download (without loading)
-    await apiGateway.downloadModel(key);
+    const response = await fetch(downloadUrl, { 
+      method: 'POST',
+      timeout: 600000 // 10 minutes for large model downloads
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`AI service returned ${response.status}: ${errorText}`);
+    }
     
     // Update DB status
     const result = await pool.query(`
@@ -288,10 +318,6 @@ router.post('/models/:key/download', async (req, res) => {
       WHERE model_key = $1
       RETURNING model_key, status, downloaded_at
     `, [key]);
-    
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: `Model ${key} not found` });
-    }
     
     res.json({
       success: true,

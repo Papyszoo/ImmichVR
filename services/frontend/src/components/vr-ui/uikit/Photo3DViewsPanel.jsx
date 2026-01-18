@@ -165,12 +165,25 @@ function Photo3DViewsPanel({
   onSelect = () => {},
   position = [1.5, 0, 0], // Right side of photo
 }) {
+  // Group options by type
+  const depthOptions = viewOptions.filter(opt => opt.type === 'depth');
+  const splatOptions = viewOptions.filter(opt => opt.type === 'splat');
+  
+  // Calculate dynamic height based on content
+  // Each section header is 24px, each row is 44px, gaps, padding
+  const baseHeight = 60; // Header + padding
+  const sectionHeaderHeight = 28;
+  const rowHeight = 48;
+  const totalHeight = baseHeight 
+    + (depthOptions.length > 0 ? sectionHeaderHeight + depthOptions.length * rowHeight : 0)
+    + (splatOptions.length > 0 ? sectionHeaderHeight + splatOptions.length * rowHeight : 0);
+  
   return (
     <group position={position}>
       <Root pixelSize={0.003}>
         <Container
-          width={220}
-          height={200}
+          width={240}
+          height={Math.max(200, totalHeight)}
           backgroundColor={COLORS.bg}
           backgroundOpacity={COLORS.bgOpacity}
           flexDirection="column"
@@ -182,24 +195,51 @@ function Photo3DViewsPanel({
             3D Views
           </Text>
           
-          {/* Model list */}
-          <Container flexDirection="column" gap={4} width="100%">
-            {viewOptions.length > 0 ? (
-                viewOptions.map((viewOption) => (
-                  <ModelRow
-                    key={viewOption.key}
-                    viewOption={viewOption}
-                    isActive={activeModel === viewOption.key}
-                    onGenerate={onGenerate}
-                    onRemove={onRemove}
-                    onConvert={onConvert}
-                    onSelect={onSelect}
-                  />
-                ))
-            ) : (
-                <Text color={COLORS.textMuted} fontSize={14}>Loading models...</Text>
-            )}
-          </Container>
+          {viewOptions.length === 0 ? (
+            <Text color={COLORS.textMuted} fontSize={14}>Loading models...</Text>
+          ) : (
+            <Container flexDirection="column" gap={8} width="100%">
+              {/* Depth Maps Section */}
+              {depthOptions.length > 0 && (
+                <Container flexDirection="column" gap={4} width="100%">
+                  <Text fontSize={12} color={COLORS.textMuted} marginBottom={4}>
+                    DEPTH MAPS
+                  </Text>
+                  {depthOptions.map((viewOption) => (
+                    <ModelRow
+                      key={viewOption.key}
+                      viewOption={viewOption}
+                      isActive={activeModel === viewOption.key}
+                      onGenerate={onGenerate}
+                      onRemove={onRemove}
+                      onConvert={onConvert}
+                      onSelect={onSelect}
+                    />
+                  ))}
+                </Container>
+              )}
+              
+              {/* Gaussian Splats Section */}
+              {splatOptions.length > 0 && (
+                <Container flexDirection="column" gap={4} width="100%">
+                  <Text fontSize={12} color={COLORS.textMuted} marginBottom={4}>
+                    GAUSSIAN SPLATS
+                  </Text>
+                  {splatOptions.map((viewOption) => (
+                    <ModelRow
+                      key={viewOption.key}
+                      viewOption={viewOption}
+                      isActive={activeModel === viewOption.key}
+                      onGenerate={onGenerate}
+                      onRemove={onRemove}
+                      onConvert={onConvert}
+                      onSelect={onSelect}
+                    />
+                  ))}
+                </Container>
+              )}
+            </Container>
+          )}
         </Container>
       </Root>
     </group>

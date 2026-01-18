@@ -17,7 +17,7 @@ import styles from './gallery/galleryStyles';
 
 import { usePhotoViewerAnimation } from '../hooks/usePhotoViewerAnimation';
 import { usePhoto3DManager } from '../hooks/usePhoto3DManager';
-import { generateDepthWithModel, getPhotoFiles, deletePhotoFile, getAIModels, getSettings } from '../services/api';
+import { generateAsset, generateDepthWithModel, getPhotoFiles, deletePhotoFile, getAIModels, getSettings } from '../services/api';
 
 
 /**
@@ -116,20 +116,35 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
     const photo = photos.find(p => p.id === selectedPhotoId);
     if (depthCache[selectedPhotoId] || photo?.depthUrl) return;
     
-    console.log('Auto-generating depth for photo:', selectedPhotoId);
+    console.log('Auto-generating asset for photo:', selectedPhotoId, 'with model:', settings.defaultDepthModel);
     
     const autoGenerate = async () => {
       try {
-        const blob = await generateDepthWithModel(selectedPhotoId, settings.defaultDepthModel);
-        const url = URL.createObjectURL(blob);
-        setDepthCache(prev => ({ ...prev, [selectedPhotoId]: url }));
+        // Lookup model type from availableModels
+        const model = availableModels.find(m => m.key === settings.defaultDepthModel);
+        if (!model) {
+          console.error('Auto-generate: Model not found:', settings.defaultDepthModel);
+          return;
+        }
+        
+        const assetType = model.type || 'depth'; // Default to depth for backwards compatibility
+        console.log(`[VRThumbnailGallery] Auto-generating ${assetType} with model ${settings.defaultDepthModel}`);
+        
+        // Call generateAsset with correct type
+        const blob = await generateAsset(selectedPhotoId, assetType, settings.defaultDepthModel);
+        
+        // For depth maps, cache the blob URL
+        if (assetType === 'depth') {
+          const url = URL.createObjectURL(blob);
+          setDepthCache(prev => ({ ...prev, [selectedPhotoId]: url }));
+        }
       } catch (err) {
-        console.warn('Auto-generate depth failed:', err);
+        console.warn('Auto-generate asset failed:', err);
       }
     };
     
     autoGenerate();
-  }, [selectedPhotoId, settings.autoGenerateOnEnter, settings.defaultDepthModel, photos, depthCache]);
+  }, [selectedPhotoId, settings.autoGenerateOnEnter, settings.defaultDepthModel, photos, depthCache, availableModels]);
   
   // Fetch settings on mount
   useEffect(() => {
@@ -176,25 +191,40 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
       .catch(err => console.warn('Failed to fetch AI models:', err));
   }, [selectedPhotoId]); // Re-fetch when photo selection changes
   
-  // Handle generate depth with specific model
+  // Handle generate asset with specific model
   const handleGenerateDepth = useCallback(async (modelKey) => {
     if (!selectedPhotoId || generatingModel) return;
     
     setGeneratingModel(modelKey);
     try {
-      const blob = await generateDepthWithModel(selectedPhotoId, modelKey);
-      const url = URL.createObjectURL(blob);
-      setDepthCache(prev => ({ ...prev, [selectedPhotoId]: url }));
+      // Lookup model type from availableModels
+      const model = availableModels.find(m => m.key === modelKey);
+      if (!model) {
+        console.error('Model not found:', modelKey);
+        return;
+      }
+      
+      const assetType = model.type || 'depth'; // Default to depth for backwards compatibility
+      console.log(`[VRThumbnailGallery] Generating ${assetType} with model ${modelKey}`);
+      
+      // Call generateAsset with correct type
+      const blob = await generateAsset(selectedPhotoId, assetType, modelKey);
+      
+      // For depth maps, cache the blob URL
+      if (assetType === 'depth') {
+        const url = URL.createObjectURL(blob);
+        setDepthCache(prev => ({ ...prev, [selectedPhotoId]: url }));
+      }
       
       // Refresh files list
       const data = await getPhotoFiles(selectedPhotoId);
       setPhotoFiles(data.files || []);
     } catch (err) {
-      console.error('Failed to generate depth:', err);
+      console.error('Failed to generate asset:', err);
     } finally {
       setGeneratingModel(null);
     }
-  }, [selectedPhotoId, generatingModel]);
+  }, [selectedPhotoId, generatingModel, availableModels]);
   
   // Handle remove generated file
   const handleRemoveFile = useCallback(async (modelKey) => {

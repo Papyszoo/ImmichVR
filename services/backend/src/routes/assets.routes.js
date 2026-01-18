@@ -10,7 +10,11 @@ const fs = require('fs').promises;
 const path = require('path');
 const FormData = require('form-data');
 const axios = require('axios');
+const { spawn } = require('child_process');
 const { immichConnector, modelManager } = require('../services');
+
+// Splat storage directory
+const SPLATS_DIR = process.env.SPLATS_DIR || '/app/data/splats';
 
 /**
  * GET /api/assets/:id/files
@@ -105,6 +109,8 @@ router.post('/:id/generate', async (req, res) => {
     try {
         if (type === 'depth') {
             await handleDepthGeneration(id, modelKey, res);
+        } else if (type === 'splat') {
+            await handleSplatGeneration(id, res);
         } else {
             res.status(501).json({ error: 'Not implemented', message: `Generation for type '${type}' not yet supported` });
         }
@@ -315,6 +321,179 @@ async function handleDepthGeneration(assetId, modelKey, res) {
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('X-Asset-Cache', 'miss');
     res.send(depthBuffer);
+}
+
+/**
+ * Handle Gaussian Splat generation via AI service
+ * Generates .ply from AI service, then converts to .ksplat for Quest 3
+ */
+async function handleSplatGeneration(assetId, res) {
+    const modelKey = 'sharp';
+    
+    // 1. Check Cache
+    const mediaItemResult = await pool.query('SELECT id FROM media_items WHERE immich_asset_id = $1', [assetId]);
+    
+    if (mediaItemResult.rows.length > 0) {
+        const mediaItemId = mediaItemResult.rows[0].id;
+        const cacheResult = await pool.query(
+            `SELECT id, file_path, format FROM generated_assets_3d 
+             WHERE media_item_id = $1 AND asset_type = 'splat' AND model_key = $2
+             ORDER BY format = 'ksplat' DESC`,
+            [mediaItemId, modelKey]
+        );
+        
+        if (cacheResult.rows.length > 0) {
+            // Prefer .ksplat over .ply
+            const cachedFile = cacheResult.rows[0];
+            try {
+                const cachedBuffer = await fs.readFile(cachedFile.file_path);
+                res.setHeader('Content-Type', 'application/octet-stream');
+                res.setHeader('X-Asset-Cache', 'hit');
+                res.setHeader('X-Asset-Format', cachedFile.format);
+                return res.send(cachedBuffer);
+            } catch (err) {
+                console.warn(`Cache file missing at ${cachedFile.file_path}, regenerating...`);
+            }
+        }
+    }
+
+    // 2. Fetch Source Image from Immich
+    console.log(`[Splat] Fetching image for ${assetId}...`);
+    const imageBuffer = await immichConnector.getThumbnail(assetId, { size: 'preview', format: 'JPEG' });
+    const assetInfo = await immichConnector.getAssetInfo(assetId);
+
+    // 3. Prepare AI Request
+    const formData = new FormData();
+    formData.append('image', imageBuffer, {
+        filename: assetInfo.originalFileName || 'image.jpg',
+        contentType: 'image/jpeg'
+    });
+    
+    const aiUrl = process.env.AI_SERVICE_URL || 'http://ai:5000';
+    
+    // 4. Call AI Service to generate .ply
+    console.log(`[Splat] Calling AI service for ${assetId}...`);
+    const aiResponse = await axios.post(`${aiUrl}/api/splat`, formData, {
+        headers: formData.getHeaders(),
+        responseType: 'arraybuffer',
+        timeout: 300000, // 5 minute timeout for splat generation
+    });
+
+    const plyBuffer = Buffer.from(aiResponse.data);
+    console.log(`[Splat] Received PLY (${plyBuffer.length} bytes)`);
+    
+    // 5. Save .ply file
+    await fs.mkdir(SPLATS_DIR, { recursive: true });
+    
+    // Get or create media_item
+    let mediaItemId;
+    if (mediaItemResult.rows.length > 0) {
+        mediaItemId = mediaItemResult.rows[0].id;
+    } else {
+        const insertResult = await pool.query(
+            `INSERT INTO media_items 
+             (original_filename, media_type, immich_asset_id, source_type, file_path, file_size, mime_type)
+             VALUES ($1, 'photo', $2, 'immich', $3, $4, $5)
+             RETURNING id`,
+            [
+              assetInfo.originalFileName || `immich_${assetId}`, 
+              assetId,
+              `immich://${assetId}`,
+              assetInfo.exifInfo?.fileSizeInByte || 0,
+              assetInfo.originalMimeType || 'application/octet-stream'
+            ]
+        );
+        mediaItemId = insertResult.rows[0].id;
+    }
+    
+    const baseFilename = path.parse(assetInfo.originalFileName || `immich_${assetId}`).name;
+    const plyFilename = `${baseFilename}_${mediaItemId}_${modelKey}.ply`;
+    const plyFilePath = path.join(SPLATS_DIR, plyFilename);
+    
+    await fs.writeFile(plyFilePath, plyBuffer);
+    console.log(`[Splat] Saved PLY to ${plyFilePath}`);
+    
+    // Record .ply in database
+    await pool.query(
+        `INSERT INTO generated_assets_3d 
+         (media_item_id, asset_type, model_key, format, file_path, file_size, metadata)
+         VALUES ($1, 'splat', $2, 'ply', $3, $4, $5)
+         ON CONFLICT (media_item_id, asset_type, model_key, format) 
+         DO UPDATE SET 
+           file_path = EXCLUDED.file_path,
+           file_size = EXCLUDED.file_size,
+           generated_at = NOW()`,
+        [mediaItemId, modelKey, plyFilePath, plyBuffer.length, JSON.stringify({ source: 'ml-sharp' })]
+    );
+    
+    // 6. Convert .ply to .ksplat (background, async)
+    convertPlyToKsplat(plyFilePath, mediaItemId, modelKey).catch(err => {
+        console.error('[Splat] Conversion failed:', err.message);
+    });
+    
+    // 7. Return .ply for now (frontend will use it or poll for .ksplat)
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('X-Asset-Cache', 'miss');
+    res.setHeader('X-Asset-Format', 'ply');
+    res.send(plyBuffer);
+}
+
+/**
+ * Convert .ply to .ksplat format using gaussian-splats-3d CLI
+ * This is optimized for Quest 3 browser streaming
+ */
+async function convertPlyToKsplat(plyFilePath, mediaItemId, modelKey) {
+    const ksplatFilePath = plyFilePath.replace('.ply', '.ksplat');
+    
+    console.log(`[Splat] Converting ${plyFilePath} to .ksplat...`);
+    
+    return new Promise((resolve, reject) => {
+        // Use npx to run the gaussian-splats-3d converter
+        const proc = spawn('npx', [
+            'gaussian-splats-3d', 
+            plyFilePath, 
+            ksplatFilePath
+        ], {
+            cwd: process.cwd(),
+            shell: true
+        });
+        
+        let stdout = '';
+        let stderr = '';
+        
+        proc.stdout.on('data', (data) => { stdout += data.toString(); });
+        proc.stderr.on('data', (data) => { stderr += data.toString(); });
+        
+        proc.on('close', async (code) => {
+            if (code === 0) {
+                try {
+                    // Record .ksplat in database
+                    const stats = await fs.stat(ksplatFilePath);
+                    await pool.query(
+                        `INSERT INTO generated_assets_3d 
+                         (media_item_id, asset_type, model_key, format, file_path, file_size, metadata)
+                         VALUES ($1, 'splat', $2, 'ksplat', $3, $4, $5)
+                         ON CONFLICT (media_item_id, asset_type, model_key, format) 
+                         DO UPDATE SET 
+                           file_path = EXCLUDED.file_path,
+                           file_size = EXCLUDED.file_size,
+                           generated_at = NOW()`,
+                        [mediaItemId, modelKey, ksplatFilePath, stats.size, JSON.stringify({ converted_from: 'ply' })]
+                    );
+                    console.log(`[Splat] Conversion complete: ${ksplatFilePath} (${stats.size} bytes)`);
+                    resolve(ksplatFilePath);
+                } catch (err) {
+                    reject(new Error(`Failed to record ksplat: ${err.message}`));
+                }
+            } else {
+                reject(new Error(`Conversion failed (exit ${code}): ${stderr || stdout}`));
+            }
+        });
+        
+        proc.on('error', (err) => {
+            reject(new Error(`Failed to spawn converter: ${err.message}`));
+        });
+    });
 }
 
 module.exports = router;

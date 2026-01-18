@@ -6,3 +6,5 @@ transformers==4.48.0
 Pillow==10.3.0
 numpy==1.26.3
 opencv-python-headless==4.9.0.80
+plyfile==1.0.3
+# ml-sharp is installed via: pip install git+https://github.com/apple/ml-sharp.git

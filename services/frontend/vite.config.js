@@ -17,7 +17,6 @@ function threeMatrix2PolyfillPlugin() {
 // Injected by vite.config.js for SparkJS compatibility
 class Matrix2Polyfill {
   constructor(n11, n12, n21, n22) {
-    Matrix2Polyfill.prototype.isMatrix2 = true;
     this.elements = [1, 0, 0, 1];
     if (n11 !== undefined) {
       this.set(n11, n12, n21, n22);
@@ -142,6 +141,7 @@ class Matrix2Polyfill {
     return true;
   }
 }
+Matrix2Polyfill.prototype.isMatrix2 = true;
 `;
 
   return {
@@ -149,8 +149,9 @@ class Matrix2Polyfill {
     enforce: 'pre',
     
     transform(code, id) {
-      // Transform SparkJS to inject Matrix2 into the THREE namespace
-      if (!id.includes('@sparkjsdev/spark')) {
+      // Transform SparkJS to inject Matrix2 polyfill
+      // Use path separator-aware matching for node_modules package path
+      if (!id.includes('node_modules') || !id.includes('@sparkjsdev') || !id.includes('spark')) {
         return null;
       }
       
@@ -168,7 +169,7 @@ class Matrix2Polyfill {
       let modifiedCode = code.replace(/THREE\.Matrix2/g, 'Matrix2Polyfill');
       
       // Inject Matrix2 class at the top of the file (after imports)
-      // Find the last import statement and inject after it
+      // Find a safe insertion point after import statements
       const lastImportMatch = modifiedCode.match(/^(import[\s\S]*?from\s+['"][^'"]+['"];?\s*)+/m);
       if (lastImportMatch) {
         const insertPosition = lastImportMatch.index + lastImportMatch[0].length;

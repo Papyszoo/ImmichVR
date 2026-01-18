@@ -4,8 +4,8 @@
  * Renders 3D Gaussian Splats in VR using @sparkjsdev/spark's SplatMesh.
  * Supports .ply, .ksplat, .splat, and .spz file formats.
  * 
- * Note: Three.js is aliased to our polyfill in vite.config.js to provide
- * Matrix2 class required by SparkJS (missing in three.js < 0.178.0)
+ * Note: A Matrix2 polyfill is injected via vite.config.js build-time transformation
+ * to provide the Matrix2 class required by SparkJS (missing in three.js < 0.178.0)
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { useThree } from '@react-three/fiber';

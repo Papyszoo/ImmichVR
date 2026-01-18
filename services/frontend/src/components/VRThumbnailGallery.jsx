@@ -112,7 +112,7 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
   const selectingRef = useRef(false); // Synchronous lock to prevent multiple concurrent select/download calls
   const [activeDepthModel, setActiveDepthModel] = useState(null); // Currently applied depth model
   const [splatUrl, setSplatUrl] = useState(null); // URL for active Gaussian Splat
-  const [splatFormat, setSplatFormat] = useState('ply'); // Format of active splat (ply, splat, ksplat)
+  const [splatFormat, setSplatFormat] = useState('ply'); // Format of active splat (ply, splat, ksplat, spz)
   
   // Auto-generate depth when entering photo view
   useEffect(() => {
@@ -368,20 +368,8 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
         }
       } else if (file.type === 'splat') {
         // For splat models, fetch the splat file
+        // SparkJS supports PLY, KSPLAT, SPLAT, and SPZ formats with web worker parsing
         console.log('Selected splat model:', modelKey, 'file:', file);
-        
-        // PLY files are too large for web viewing - only KSPLAT is supported
-        if (file.format === 'ply') {
-          console.log('[Splat] PLY format detected. PLY files are too large for web viewing (~66MB). Please convert to KSPLAT first.');
-          setActiveDepthModel(modelKey);
-          // Don't try to load PLY - just mark it as active so user knows it's selected
-          // Clear any existing splat URL
-          if (splatUrl) {
-            URL.revokeObjectURL(splatUrl);
-            setSplatUrl(null);
-          }
-          return;
-        }
         
         try {
           const response = await fetch(`/api/assets/${selectedPhotoId}/files/${file.id}/download`);
@@ -775,7 +763,7 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
           {selectedPhotoId && (
              <group position={[0, 0, 0]}>
                 {/* Render current and adjacent photos - HIDE when splat is active */}
-                {!(splatUrl && (splatFormat === 'ksplat' || splatFormat === 'splat')) && photosWithDepth.map((photo, index) => {
+                {!(splatUrl && (splatFormat === 'ksplat' || splatFormat === 'splat' || splatFormat === 'ply' || splatFormat === 'spz')) && photosWithDepth.map((photo, index) => {
                    // Only render if close to selected index (optimization)
                    if (Math.abs(index - selectedIndex) > 3) return null;
                    return (
@@ -789,11 +777,11 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
                    );
                 })}
                 
-                {/* Gaussian Splat Viewer - renders for KSPLAT and SPLAT formats (PLY too large for web viewing) */}
-                {splatUrl && (splatFormat === 'ksplat' || splatFormat === 'splat') && (
+                {/* Gaussian Splat Viewer - renders for PLY, KSPLAT, SPLAT, and SPZ formats (SparkJS supports all) */}
+                {splatUrl && (splatFormat === 'ksplat' || splatFormat === 'splat' || splatFormat === 'ply' || splatFormat === 'spz') && (
                   <GaussianSplatViewer
                     splatUrl={splatUrl}
-                    testMode={false}  /* Using our converted .splat file */
+                    testMode={false}  /* Using our splat file */
                     position={[0, 1.5, -5]}
                     scale={0.01}
                     onLoad={() => console.log(`[Splat] Viewer loaded (${splatFormat}) at [0, 1.5, -5] scale=0.01`)}

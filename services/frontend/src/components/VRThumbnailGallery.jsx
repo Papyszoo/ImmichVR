@@ -5,9 +5,11 @@ import { animated } from '@react-spring/three';
 
 // Extracted components
 import xrStore from './xr/xrStore';
+import PerformanceMonitor from './PerformanceMonitor';
 import XRScrollController from './xr/XRScrollController';
 import UIKitSettingsPanel from './vr-ui/uikit/UIKitSettingsPanel';
 import Photo3DViewsPanel from './vr-ui/uikit/Photo3DViewsPanel';
+import ViewerPositionPanel from './vr-ui/uikit/ViewerPositionPanel';
 
 import CameraController from './gallery/CameraController';
 import ThumbnailGrid from './gallery/ThumbnailGrid';
@@ -91,6 +93,7 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
     enableGridDepth: false, // Toggle depth in grid view
     defaultDepthModel: 'small',  // Default model for auto-generate
     autoGenerateOnEnter: false,  // Auto-generate depth on photo enter
+    disableAutoQuality: false,   // Disable adaptive quality drop
   });
 
   const [scrollY, setScrollY] = useState(0);
@@ -113,6 +116,48 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
   const [activeDepthModel, setActiveDepthModel] = useState(null); // Currently applied depth model
   const [splatUrl, setSplatUrl] = useState(null); // URL for active Gaussian Splat
   const [splatFormat, setSplatFormat] = useState('ply'); // Format of active splat (ply, splat, ksplat, spz)
+  
+  // Quality Control State
+  const [qualityMode, setQualityMode] = useState('HIGH'); 
+  const [dpr, setDpr] = useState(1.5); // Default to decent quality (1.5 is safer than native window.devicePixelRatio)
+
+  // Callback when lag is detected
+  const handlePerformanceDrop = useCallback(() => {
+    // Check setting first!
+    if (settings.disableAutoQuality) {
+        console.log("Performance drop detected, but auto-optimization is disabled by user.");
+        return;
+    }
+
+    if (qualityMode === 'HIGH') {
+      console.log("Switching to LOW quality mode due to performance.");
+      setQualityMode('LOW');
+      setDpr(0.75); // Drastically reduce resolution
+    }
+  }, [qualityMode, settings.disableAutoQuality]);
+  
+  // Manual toggle for quality
+  const handleToggleQuality = useCallback(() => {
+      if (qualityMode === 'HIGH') {
+          console.log("vRThumbnailGallery: Manually switching to LOW quality");
+          setQualityMode('LOW');
+          setDpr(0.75);
+      } else {
+          console.log("vRThumbnailGallery: Manually switching to HIGH quality");
+          setQualityMode('HIGH');
+          setDpr(1.5);
+      }
+  }, [qualityMode]);
+  
+  // Viewer position controls
+  const [viewerTransform, setViewerTransform] = useState({
+    positionX: 0,
+    positionY: 1.6,
+    positionZ: -0.4,
+    scale: 1,
+    rotationY: 0,
+  });
+  const [splatCount, setSplatCount] = useState(0);
   
   // Auto-generate depth when entering photo view
   useEffect(() => {
@@ -160,6 +205,7 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
           ...prev,
           defaultDepthModel: data.defaultDepthModel || prev.defaultDepthModel,
           autoGenerateOnEnter: data.autoGenerateOnEnter !== undefined ? data.autoGenerateOnEnter : prev.autoGenerateOnEnter,
+          disableAutoQuality: data.disableAutoQuality !== undefined ? data.disableAutoQuality : prev.disableAutoQuality,
         }));
       })
       .catch(err => console.warn('Failed to fetch user settings:', err));
@@ -224,15 +270,16 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
     setGeneratingModel(modelKey);
     
     try {
-      // Special handling for KSPLAT and SPLAT virtual entries - these trigger conversion, not generation
-      if (modelKey === 'ksplat' || modelKey === 'splat') {
-        console.log(`[VRThumbnailGallery] Converting PLY to ${modelKey.toUpperCase()}`);
+      // Special handling for KSPLAT virtual entry - triggers conversion, not generation
+      // Note: SPLAT format removed - use PLY or KSPLAT instead
+      if (modelKey === 'ksplat') {
+        console.log(`[VRThumbnailGallery] Converting PLY to KSPLAT`);
         
         // Call convert endpoint
         const response = await fetch(`/api/assets/${selectedPhotoId}/convert`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ from: 'ply', to: modelKey })
+          body: JSON.stringify({ from: 'ply', to: 'ksplat' })
         });
         
         if (!response.ok) {
@@ -284,7 +331,17 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
     if (!selectedPhotoId) return;
     
     // Find the file ID for this model
-    const file = photoFiles.find(f => f.modelKey === modelKey);
+    // Special handling for virtual KSPLAT entry - the file has modelKey 'sharp' but format 'ksplat'
+    let file;
+    if (modelKey === 'ksplat') {
+      file = photoFiles.find(f => f.modelKey === 'sharp' && f.format === 'ksplat');
+    } else if (modelKey === 'sharp') {
+      // For SHARP model, specifically look for PLY format to avoid deleting KSPLAT
+      file = photoFiles.find(f => f.modelKey === 'sharp' && f.format === 'ply');
+    } else {
+      // For other models, use standard lookup
+      file = photoFiles.find(f => f.modelKey === modelKey);
+    }
     if (!file) return;
     
     try {
@@ -320,16 +377,13 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
     
     try {
       // Find the file for this model
-      // Special handling for virtual KSPLAT/SPLAT entries - the file has modelKey 'sharp' but different formats
+      // Special handling for virtual KSPLAT entry - the file has modelKey 'sharp' but different format
       let file;
       if (modelKey === 'ksplat') {
         // KSPLAT is a virtual entry - look for format 'ksplat' with modelKey 'sharp'
         file = photoFiles.find(f => f.modelKey === 'sharp' && f.format === 'ksplat');
-      } else if (modelKey === 'splat') {
-        // SPLAT is a virtual entry - look for format 'splat' with modelKey 'sharp'
-        file = photoFiles.find(f => f.modelKey === 'sharp' && f.format === 'splat');
       } else if (modelKey === 'sharp') {
-        // For SHARP model, specifically look for PLY format to avoid confusion with KSPLAT/SPLAT
+        // For SHARP model, specifically look for PLY format to avoid confusion with KSPLAT
         file = photoFiles.find(f => f.modelKey === 'sharp' && f.format === 'ply');
       } else {
         // For other models, use standard lookup
@@ -641,13 +695,15 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
           generatingModel,
           depthCache,
           settings,
+          viewerTransform,
           photos // Expose photos list to find IDs
         },
         actions: {
             generateAsset: handleGenerateDepth,
             removeAsset: handleRemoveFile,
             selectPhoto: (id) => setSelectedPhotoId(id),
-            setSettings: setSettings
+            setSettings: setSettings,
+            setViewerTransform: setViewerTransform
         }
       };
     }
@@ -715,13 +771,22 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
       {/* 3D Canvas */}
       <Canvas 
         style={styles.canvas}
+        dpr={dpr}
         camera={{ position: [0, 1.6, 0], fov: 70, near: 0.1, far: 100 }}
-        gl={{ antialias: true }}
+        gl={{ antialias: qualityMode === 'HIGH' }}
       >
         <XR store={xrStore}>
           <color attach="background" args={['#000000']} />
           <ambientLight intensity={1.0} />
           <directionalLight position={[0, 5, 5]} intensity={0.3} />
+
+          <PerformanceMonitor 
+            enabled={true}
+            position={[-2, 2.5, -2]} 
+            onPerformanceDrop={handlePerformanceDrop}
+            qualityMode={qualityMode}
+            onToggleQuality={handleToggleQuality}
+          />
 
           <CameraController scrollY={selectedPhotoId ? 0 : scrollY} />
           <XRScrollController 
@@ -781,15 +846,27 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
                 {splatUrl && (splatFormat === 'ksplat' || splatFormat === 'splat' || splatFormat === 'ply' || splatFormat === 'spz') && (
                   <GaussianSplatViewer
                     splatUrl={splatUrl}
+                    quality={qualityMode}
                     fileType={splatFormat}  /* Explicit format for blob URLs (required for ksplat, splat) */
                     testMode={false}  /* Using our splat file */
-                    position={[0, 1.5, 0]}  /* Center splat at viewer position for immersive experience */
-                    rotation={[Math.PI, 0, 0]}  /* Flip 180° around X axis to fix upside-down orientation */
-                    scale={0.1}
-                    onLoad={() => console.log(`[Splat] Viewer loaded (${splatFormat}) at [0, 1.5, 0] scale=0.1`)}
+                    position={[viewerTransform.positionX, viewerTransform.positionY, viewerTransform.positionZ]}
+                    rotation={[Math.PI, viewerTransform.rotationY * (Math.PI / 180), 0]}
+                    scale={viewerTransform.scale}
+                    onLoad={(mesh, count) => {
+                      console.log(`[Splat] Viewer loaded (${splatFormat}) count=${count}`);
+                      setSplatCount(count || 0);
+                    }}
                     onError={(err) => console.error('[Splat] Viewer error:', err)}
                   />
                 )}
+                
+                {/* Position controls panel on left side */}
+                <ViewerPositionPanel
+                  transform={viewerTransform}
+                  onTransformChange={setViewerTransform}
+                  splatCount={splatCount}
+                  position={[-2.5, 1.6, -settings.wallDistance]}
+                />
                 
                 {/* 3D Views Panel on right side of current photo */}
                 <Photo3DViewsPanelWrapper
@@ -801,7 +878,7 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
                   onRemove={handleRemoveFile}
                   onSelect={handleSelectDepth}
                   onConvert={handleConvert}
-                  position={[1.7, 1.6, -settings.wallDistance]}
+                  position={[2.5, 1.6, -settings.wallDistance]}
                 />
              </group>
           )}

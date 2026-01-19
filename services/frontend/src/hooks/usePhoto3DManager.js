@@ -36,13 +36,12 @@ function determineModelStatus(modelKey, generatedFiles, isDownloaded, modelType 
   const hasReadyFormat = modelFiles.some(f => 
     f.format === 'png' ||       // Depth map (PNG)
     f.format === 'jpg' ||       // Depth map (JPEG)
-    f.format === 'splat' ||     // Web-ready splat
     f.format === 'ksplat'       // Compressed splat (Quest 3 optimized)
   );
   
   if (hasReadyFormat) {
     const readyFile = modelFiles.find(f => 
-      f.format === 'png' || f.format === 'jpg' || f.format === 'splat' || f.format === 'ksplat'
+      f.format === 'png' || f.format === 'jpg' || f.format === 'ksplat'
     );
     return {
       status: 'ready',
@@ -132,7 +131,8 @@ export function usePhoto3DManager({ generatedFiles = [], availableModels = [], p
         
         // Only show conversion entries if SHARP PLY has been generated
         if (hasPly) {
-          // KSPLAT entry (compressed format)
+          // KSPLAT entry (compressed format) - only conversion format supported
+          // Note: SPLAT format removed - use PLY or KSPLAT instead
           const ksplatFile = sharpFiles.find(f => f.format === 'ksplat');
           if (ksplatFile) {
             options.push({
@@ -154,38 +154,6 @@ export function usePhoto3DManager({ generatedFiles = [], availableModels = [], p
               name: 'KSPLAT',
               type: 'splat',
               params: 'Compressed',
-              status: 'missing',
-              fileId: null,
-              canGenerate: true,
-              canConvert: false,
-              canRemove: false,
-              isDownloaded: true,
-              isVirtual: true,
-            });
-          }
-          
-          // SPLAT entry (standard format, more compatible with drei)
-          const splatFile = sharpFiles.find(f => f.format === 'splat');
-          if (splatFile) {
-            options.push({
-              key: 'splat',
-              name: 'SPLAT',
-              type: 'splat',
-              params: 'Standard',
-              status: 'ready',
-              fileId: splatFile.id,
-              canGenerate: false,
-              canConvert: false,
-              canRemove: true,
-              isDownloaded: true,
-              isVirtual: true,
-            });
-          } else {
-            options.push({
-              key: 'splat',
-              name: 'SPLAT',
-              type: 'splat',
-              params: 'Standard',
               status: 'missing',
               fileId: null,
               canGenerate: true,

@@ -149,7 +149,6 @@ router.get('/:id/files/:fileId/download', async (req, res) => {
       'jpg': 'image/jpeg',
       'jpeg': 'image/jpeg',
       'ply': 'application/octet-stream',
-      'splat': 'application/octet-stream',
       'ksplat': 'application/octet-stream',
     };
     const contentType = contentTypes[format] || 'application/octet-stream';
@@ -269,15 +268,16 @@ router.post('/:id/convert', async (req, res) => {
       });
     }
     
-    // Trigger conversion based on target format
+    // Trigger conversion (only ksplat supported)
+    if (to !== 'ksplat') {
+      return res.status(400).json({ 
+        error: 'Unsupported format', 
+        message: 'Only ksplat conversion is supported. PLY files can be loaded directly by SparkJS.' 
+      });
+    }
+    
     try {
-      let outputPath;
-      if (to === 'splat') {
-        outputPath = await convertPlyToSplat(plyFilePath, mediaItemId, modelKey);
-      } else {
-        // Default to ksplat
-        outputPath = await convertPlyToKsplat(plyFilePath, mediaItemId, modelKey);
-      }
+      const outputPath = await convertPlyToKsplat(plyFilePath, mediaItemId, modelKey);
       res.json({ 
         success: true, 
         message: 'Conversion complete',
@@ -585,63 +585,7 @@ async function convertPlyToKsplat(plyFilePath, mediaItemId, modelKey) {
     });
 }
 
-/**
- * Convert .ply to standard .splat format
- * This is more compatible with drei's Splat component
- */
-async function convertPlyToSplat(plyFilePath, mediaItemId, modelKey) {
-    const splatFilePath = plyFilePath.replace('.ply', '.splat');
-    
-    console.log(`[Splat] Converting ${plyFilePath} to .splat...`);
-    
-    return new Promise((resolve, reject) => {
-        // Use our local conversion script
-        const converterPath = path.join(__dirname, '../scripts/convert-ply-to-splat.js');
-        const proc = spawn('node', [
-            converterPath,
-            plyFilePath,
-            splatFilePath
-        ], {
-            cwd: process.cwd()
-        });
-        
-        let stdout = '';
-        let stderr = '';
-        
-        proc.stdout.on('data', (data) => { stdout += data.toString(); });
-        proc.stderr.on('data', (data) => { stderr += data.toString(); });
-        
-        proc.on('close', async (code) => {
-            if (code === 0) {
-                try {
-                    // Record .splat in database
-                    const stats = await fs.stat(splatFilePath);
-                    await pool.query(
-                        `INSERT INTO generated_assets_3d 
-                         (media_item_id, asset_type, model_key, format, file_path, file_size, metadata)
-                         VALUES ($1, 'splat', $2, 'splat', $3, $4, $5)
-                         ON CONFLICT (media_item_id, asset_type, model_key, format) 
-                         DO UPDATE SET 
-                           file_path = EXCLUDED.file_path,
-                           file_size = EXCLUDED.file_size,
-                           generated_at = NOW()`,
-                        [mediaItemId, modelKey, splatFilePath, stats.size, JSON.stringify({ converted_from: 'ply' })]
-                    );
-                    console.log(`[Splat] Conversion complete: ${splatFilePath} (${stats.size} bytes)`);
-                    resolve(splatFilePath);
-                } catch (err) {
-                    reject(new Error(`Failed to record splat: ${err.message}`));
-                }
-            } else {
-                reject(new Error(`Conversion failed (exit ${code}): ${stderr || stdout}`));
-            }
-        });
-        
-        proc.on('error', (err) => {
-            reject(new Error(`Failed to spawn converter: ${err.message}`));
-        });
-    });
-}
+// Note: SPLAT format removed - use PLY (SparkJS loads natively) or KSPLAT
 
 
 module.exports = router;

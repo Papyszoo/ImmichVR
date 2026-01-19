@@ -50,12 +50,39 @@ async function main() {
         }
         
         console.log(`Parsed ${splatArray.splatCount} splats`);
+
+        // --- Random Decimation Step ---
+        const KEEP_PERCENTAGE = 0.65; // Keep 65% (Aggressive reduction for Quest)
+        const targetCount = Math.floor(splatArray.splatCount * KEEP_PERCENTAGE);
+        
+        if (targetCount < splatArray.splatCount) {
+            console.log(`Decimating to ${targetCount} splats (${(KEEP_PERCENTAGE * 100).toFixed(0)}%)...`);
+            
+            const newSplats = [];
+            let keptCount = 0;
+            
+            for (let i = 0; i < splatArray.splatCount && keptCount < targetCount; i++) {
+                const remainingNeeded = targetCount - keptCount;
+                const remainingAvailable = splatArray.splatCount - i;
+                
+                // Probabilistic selection to exactly fill the target count
+                if (Math.random() < (remainingNeeded / remainingAvailable)) {
+                    newSplats.push(splatArray.splats[i]);
+                    keptCount++;
+                }
+            }
+            
+            splatArray.splats = newSplats;
+            splatArray.splatCount = keptCount;
+        }
         
         // Generate compressed splat buffer
-        // Use undefined for optional params - the library will use smart defaults
+        // Quest 3 optimized settings:
+        // - alphaRemovalThreshold 15: Remove nearly invisible splats (scale 0-255)
+        // - compressionLevel 2: 8-bit SH compression (massive size reduction)
         const splatBufferGenerator = GaussianSplats3D.SplatBufferGenerator.getStandardGenerator(
-            1,          // alphaRemovalThreshold (remove very transparent splats)
-            0,          // compressionLevel (0=none for max compatibility)
+            15,         // alphaRemovalThreshold (remove invisible noise splats)
+            2,          // compressionLevel (2=8-bit SH compression for Quest 3)
             0,          // sectionSize (0=auto)
             undefined,  // sceneCenter (undefined = auto-calculate from data)
             undefined,  // blockSize (undefined = use default)

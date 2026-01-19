@@ -178,7 +178,7 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
           // but for now DB is reliable for persistence.
           
           // Helper flags
-          is_loaded: aiModelsData.current_model === dbModel.key,
+          is_loaded: runtimeInfo?.is_loaded ?? (aiModelsData.current_model === dbModel.key),
           // If AI service reports it as downloaded, trust that too (e.g. manual file placement)
           status: (runtimeInfo?.is_downloaded || dbModel.status === 'downloaded') ? 'downloaded' : 'not_downloaded'
         };
@@ -225,6 +225,7 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
             ...prev,
             defaultDepthModel: data.defaultDepthModel || 'small',
             autoGenerateOnEnter: data.autoGenerateOnEnter || false,
+            disableAutoQuality: data.disableAutoQuality || false,
           }));
         })
         .catch(err => console.warn('Failed to fetch settings:', err));
@@ -257,7 +258,15 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
     
     // Sync to backend
     try {
-      await updateSettings({ [key === 'defaultDepthModel' ? 'defaultDepthModel' : 'autoGenerateOnEnter']: value });
+      // Map frontend keys to backend keys if they differ
+      const payload = {};
+      if (key === 'defaultDepthModel') payload.defaultDepthModel = value;
+      else if (key === 'autoGenerateOnEnter') payload.autoGenerateOnEnter = value;
+      else if (key === 'disableAutoQuality') payload.disableAutoQuality = value;
+      
+      if (Object.keys(payload).length > 0) {
+          await updateSettings(payload);
+      }
       
       // Logic for auto-loading is now handled lazily or via idle timeout on backend
       // We don't eagerly load anymore unless explicit 'Activate' button is clicked.
@@ -427,6 +436,13 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
                                Current Model: {settings.defaultDepthModel || 'Small'}
                             </Text>
                           </Container>
+
+                          {/* Disable Auto Optimization */}
+                          <LabeledToggle
+                            label="Never automatically optimize quality"
+                            checked={settings.disableAutoQuality || false}
+                            onChange={(v) => updateSetting('disableAutoQuality', v)}
+                          />
                         </>
                     )}
 

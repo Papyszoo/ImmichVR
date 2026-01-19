@@ -41,16 +41,20 @@ def list_models():
     # Add SHARP model (splat generation)
     try:
         from ..models.sharp_model import sharp_model
+        
+        # NEW LOGIC: Get real status from the class
+        status = sharp_model.get_status()
+        
         models_list.append({
             "key": "sharp",
             "name": "SHARP",
-            "type": "splat",  # Splat generation model
+            "type": "splat",
             "params": "~2GB",
             "memory": "~4GB RAM",
-            "description": "Apple ml-sharp: Photorealistic 3D from single image. Outputs Gaussian Splat.",
+            "description": "Apple ml-sharp: Photorealistic 3D Gaussian Splat.",
             "huggingface_id": "apple/ml-sharp",
-            "is_loaded": False,  # SHARP is not kept in memory, it's CLI-based
-            "is_downloaded": sharp_model.is_downloaded(),
+            "is_loaded": status["is_loaded"], # Now dynamic!
+            "is_downloaded": status["is_downloaded"],
         })
     except Exception as e:
         logger.warning(f"Could not include SHARP model status: {e}")
@@ -84,6 +88,18 @@ def load_model(model_key: str):
     Returns:
         JSON with success status
     """
+    if model_key == "sharp":
+        try:
+            from ..models.sharp_model import sharp_model
+            sharp_model.load_model() # This is the new method we wrote
+            return jsonify({
+                "success": True, 
+                "message": "SHARP model loaded",
+                "current_model": "sharp"
+            })
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)}), 500
+
     if model_key not in Config.AVAILABLE_MODELS:
         return jsonify({
             "error": "Unknown model",

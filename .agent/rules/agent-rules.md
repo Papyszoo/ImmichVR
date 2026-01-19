@@ -61,6 +61,7 @@ The backend is the sole source of truth for model state.
 2.  **Single Source of Truth**: This file determines the architectural and behavioral rules.
 3.  **Don't Assume, Check**: Do not add features or fixes based on assumptions without checking the codebase or asking the user.
 4.  **No Unrequested Features**: Stick strictly to the user's request. Do not implement "helpful" features that were not asked for.
+5.  **Ask Before Acting**: Do not perform unrequested changes or optimizations (like increasing timeouts, refactoring unrelated code) without explicitly asking the user for approval first.
 
 # AI Agent Instructions for ImmichVR
 

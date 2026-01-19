@@ -50,6 +50,31 @@ async function main() {
         }
         
         console.log(`Parsed ${splatArray.splatCount} splats`);
+
+        // --- Random Decimation Step ---
+        const KEEP_PERCENTAGE = 0.65; // Keep 65% (Aggressive reduction for Quest)
+        const targetCount = Math.floor(splatArray.splatCount * KEEP_PERCENTAGE);
+        
+        if (targetCount < splatArray.splatCount) {
+            console.log(`Decimating to ${targetCount} splats (${(KEEP_PERCENTAGE * 100).toFixed(0)}%)...`);
+            
+            const newSplats = [];
+            let keptCount = 0;
+            
+            for (let i = 0; i < splatArray.splatCount && keptCount < targetCount; i++) {
+                const remainingNeeded = targetCount - keptCount;
+                const remainingAvailable = splatArray.splatCount - i;
+                
+                // Probabilistic selection to exactly fill the target count
+                if (Math.random() < (remainingNeeded / remainingAvailable)) {
+                    newSplats.push(splatArray.splats[i]);
+                    keptCount++;
+                }
+            }
+            
+            splatArray.splats = newSplats;
+            splatArray.splatCount = keptCount;
+        }
         
         // Generate compressed splat buffer
         // Quest 3 optimized settings:

@@ -35,6 +35,7 @@ const FILE_TYPE_MAP = {
 function GaussianSplatViewer({ 
   splatUrl, 
   fileType,
+  quality = 'HIGH', // Default to HIGH
   position = [0, 1.5, -2],
   rotation = [0, 0, 0],
   scale = 1.0,
@@ -55,6 +56,29 @@ function GaussianSplatViewer({
   
   const url = testMode ? TEST_SPLAT_URL : splatUrl;
   
+  // React to Quality Changes (Performance Optimization)
+  useEffect(() => {
+    const mesh = splatMeshRef.current;
+    if (mesh) {
+        if (quality === 'LOW') {
+            console.log("GaussianSplatViewer: Optimizing for LOW quality");
+            // OPTIMIZATION: Reduce overdraw buffer
+            // maxStdDev controls how "wide" a splat can be drawn. 
+            // Reducing it reduces GPU fill rate pressure.
+            // Note: SparkJS SplatMesh exposes this as a property that updates uniforms
+            if (mesh.material) {
+                 mesh.maxStdDev = 2.0; 
+            }
+        } else {
+            console.log("GaussianSplatViewer: Resetting to HIGH quality");
+            // Reset to default (approx 3.0)
+            if (mesh.material) {
+                mesh.maxStdDev = 3.0; 
+            }
+        }
+    }
+  }, [quality]);
+  
   // Helper function to clean up SplatMesh
   const cleanupSplatMesh = () => {
     if (splatMeshRef.current) {
@@ -73,7 +97,7 @@ function GaussianSplatViewer({
     
     console.log('[GaussianSplatViewer] Creating SplatMesh with URL:', url);
     console.log('[GaussianSplatViewer] FileType:', fileType, '-> SplatFileType:', splatFileType);
-    console.log('[GaussianSplatViewer] Position:', position, 'Rotation:', rotation, 'Scale:', scale, 'TestMode:', testMode);
+    console.log('[GaussianSplatViewer] Position:', position, 'Rotation:', rotation, 'Scale:', scale, 'TestMode:', testMode, 'Quality:', quality);
     
     // Clean up previous mesh if exists
     cleanupSplatMesh();
@@ -96,6 +120,9 @@ function GaussianSplatViewer({
           splatMesh.rotation.set(rotation[0], rotation[1], rotation[2]);
           splatMesh.scale.setScalar(scale);
           
+          // Apply initial quality settings
+          if (quality === 'LOW') splatMesh.maxStdDev = 2.0;
+
           // Add to scene
           scene.add(splatMesh);
           splatMeshRef.current = splatMesh;
@@ -128,6 +155,9 @@ function GaussianSplatViewer({
           console.log('[GaussianSplatViewer] Mesh properties:', Object.keys(mesh || {}));
           setIsLoaded(true);
           
+          // Apply initial quality settings
+          if (quality === 'LOW') mesh.maxStdDev = 2.0;
+
           // Try multiple sources for splat count
           // SparkJS stores splat data in packedSplats after loading
           const count = mesh?.packedSplats?.size 
@@ -168,7 +198,9 @@ function GaussianSplatViewer({
       setIsLoaded(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url, fileType, scene]);
+  }, [url, fileType, scene]); // Note: excluding 'quality' from dependency array to prevent reload on quality change (handled by effect above)
+  
+  // ... rest of property updates (position, rotation, scale) ... 
   
   // Update position when props change
   useEffect(() => {
@@ -192,7 +224,6 @@ function GaussianSplatViewer({
   }, [scale]);
   
   // Return null since we're managing the mesh directly in the scene
-  // (SplatMesh is added to scene imperatively, not via JSX)
   return null;
 }
 

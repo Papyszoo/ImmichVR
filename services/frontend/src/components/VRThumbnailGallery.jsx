@@ -5,6 +5,7 @@ import { animated } from '@react-spring/three';
 
 // Extracted components
 import xrStore from './xr/xrStore';
+import PerformanceMonitor from './PerformanceMonitor';
 import XRScrollController from './xr/XRScrollController';
 import UIKitSettingsPanel from './vr-ui/uikit/UIKitSettingsPanel';
 import Photo3DViewsPanel from './vr-ui/uikit/Photo3DViewsPanel';
@@ -92,6 +93,7 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
     enableGridDepth: false, // Toggle depth in grid view
     defaultDepthModel: 'small',  // Default model for auto-generate
     autoGenerateOnEnter: false,  // Auto-generate depth on photo enter
+    disableAutoQuality: false,   // Disable adaptive quality drop
   });
 
   const [scrollY, setScrollY] = useState(0);
@@ -114,6 +116,38 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
   const [activeDepthModel, setActiveDepthModel] = useState(null); // Currently applied depth model
   const [splatUrl, setSplatUrl] = useState(null); // URL for active Gaussian Splat
   const [splatFormat, setSplatFormat] = useState('ply'); // Format of active splat (ply, splat, ksplat, spz)
+  
+  // Quality Control State
+  const [qualityMode, setQualityMode] = useState('HIGH'); 
+  const [dpr, setDpr] = useState(1.5); // Default to decent quality (1.5 is safer than native window.devicePixelRatio)
+
+  // Callback when lag is detected
+  const handlePerformanceDrop = useCallback(() => {
+    // Check setting first!
+    if (settings.disableAutoQuality) {
+        console.log("Performance drop detected, but auto-optimization is disabled by user.");
+        return;
+    }
+
+    if (qualityMode === 'HIGH') {
+      console.log("Switching to LOW quality mode due to performance.");
+      setQualityMode('LOW');
+      setDpr(0.75); // Drastically reduce resolution
+    }
+  }, [qualityMode, settings.disableAutoQuality]);
+  
+  // Manual toggle for quality
+  const handleToggleQuality = useCallback(() => {
+      if (qualityMode === 'HIGH') {
+          console.log("vRThumbnailGallery: Manually switching to LOW quality");
+          setQualityMode('LOW');
+          setDpr(0.75);
+      } else {
+          console.log("vRThumbnailGallery: Manually switching to HIGH quality");
+          setQualityMode('HIGH');
+          setDpr(1.5);
+      }
+  }, [qualityMode]);
   
   // Viewer position controls
   const [viewerTransform, setViewerTransform] = useState({
@@ -171,6 +205,7 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
           ...prev,
           defaultDepthModel: data.defaultDepthModel || prev.defaultDepthModel,
           autoGenerateOnEnter: data.autoGenerateOnEnter !== undefined ? data.autoGenerateOnEnter : prev.autoGenerateOnEnter,
+          disableAutoQuality: data.disableAutoQuality !== undefined ? data.disableAutoQuality : prev.disableAutoQuality,
         }));
       })
       .catch(err => console.warn('Failed to fetch user settings:', err));
@@ -736,13 +771,22 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
       {/* 3D Canvas */}
       <Canvas 
         style={styles.canvas}
+        dpr={dpr}
         camera={{ position: [0, 1.6, 0], fov: 70, near: 0.1, far: 100 }}
-        gl={{ antialias: true }}
+        gl={{ antialias: qualityMode === 'HIGH' }}
       >
         <XR store={xrStore}>
           <color attach="background" args={['#000000']} />
           <ambientLight intensity={1.0} />
           <directionalLight position={[0, 5, 5]} intensity={0.3} />
+
+          <PerformanceMonitor 
+            enabled={true}
+            position={[-2, 2.5, -2]} 
+            onPerformanceDrop={handlePerformanceDrop}
+            qualityMode={qualityMode}
+            onToggleQuality={handleToggleQuality}
+          />
 
           <CameraController scrollY={selectedPhotoId ? 0 : scrollY} />
           <XRScrollController 
@@ -802,6 +846,7 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
                 {splatUrl && (splatFormat === 'ksplat' || splatFormat === 'splat' || splatFormat === 'ply' || splatFormat === 'spz') && (
                   <GaussianSplatViewer
                     splatUrl={splatUrl}
+                    quality={qualityMode}
                     fileType={splatFormat}  /* Explicit format for blob URLs (required for ksplat, splat) */
                     testMode={false}  /* Using our splat file */
                     position={[viewerTransform.positionX, viewerTransform.positionY, viewerTransform.positionZ]}

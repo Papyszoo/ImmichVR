@@ -65,9 +65,10 @@ const LabeledStepper = ({ label, value, min, max, step, onChange, formatValue, u
  * 
  * @param {object} transform - Current transform: { positionX, positionY, positionZ, scale, rotationY }
  * @param {function} onTransformChange - Callback to update transform
+ * @param {number} splatCount - Number of splats currently displayed
  * @param {array} position - [x, y, z] position of the panel in 3D space
  */
-function ViewerPositionPanel({ transform, onTransformChange, position = [-1.7, 1.6, -3] }) {
+function ViewerPositionPanel({ transform, onTransformChange, splatCount = 0, position = [-1.7, 1.6, -3] }) {
   const defaults = {
     positionX: 0,
     positionY: 1.5,
@@ -98,8 +99,13 @@ function ViewerPositionPanel({ transform, onTransformChange, position = [-1.7, 1
           gap={12}
         >
           {/* Header */}
-          <Container flexDirection="row" alignItems="center" gap={8} marginBottom={8}>
+          <Container flexDirection="row" alignItems="center" justifyContent="space-between" marginBottom={8}>
             <Text fontSize={22} color={COLORS.textMain}>🎯 Position</Text>
+            {splatCount > 0 && (
+              <Container backgroundColor={COLORS.primary} paddingX={8} paddingY={4} borderRadius={6}>
+                <Text fontSize={14} color="white">{splatCount.toLocaleString()} splats</Text>
+              </Container>
+            )}
           </Container>
 
           {/* Position X */}

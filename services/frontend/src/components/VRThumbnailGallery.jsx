@@ -123,6 +123,7 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
     scale: 1,
     rotationY: 0,
   });
+  const [splatCount, setSplatCount] = useState(0);
   
   // Auto-generate depth when entering photo view
   useEffect(() => {
@@ -798,7 +799,10 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
                     position={[viewerTransform.positionX, viewerTransform.positionY, viewerTransform.positionZ]}
                     rotation={[Math.PI, viewerTransform.rotationY * (Math.PI / 180), 0]}
                     scale={viewerTransform.scale}
-                    onLoad={() => console.log(`[Splat] Viewer loaded (${splatFormat}) at [${viewerTransform.positionX}, ${viewerTransform.positionY}, ${viewerTransform.positionZ}] scale=${viewerTransform.scale}`)}
+                    onLoad={(mesh, count) => {
+                      console.log(`[Splat] Viewer loaded (${splatFormat}) count=${count}`);
+                      setSplatCount(count || 0);
+                    }}
                     onError={(err) => console.error('[Splat] Viewer error:', err)}
                   />
                 )}
@@ -807,6 +811,7 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
                 <ViewerPositionPanel
                   transform={viewerTransform}
                   onTransformChange={setViewerTransform}
+                  splatCount={splatCount}
                   position={[-2.5, 1.6, -settings.wallDistance]}
                 />
                 

@@ -44,6 +44,7 @@ function GaussianSplatViewer({
   const { scene } = useThree();
   const splatMeshRef = useRef(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [splatCount, setSplatCount] = useState(0);
   
   // Store callbacks in refs to avoid stale closures
   const onLoadRef = useRef(onLoad);
@@ -99,8 +100,14 @@ function GaussianSplatViewer({
           splatMeshRef.current = splatMesh;
           
           setIsLoaded(true);
+          
+          // Get splat count from packedSplats
+          const count = packedSplats?.size || packedSplats?.numSplats || 0;
+          setSplatCount(count);
+          console.log('[GaussianSplatViewer] Splat count:', count);
+          
           if (onLoadRef.current) {
-            onLoadRef.current(splatMesh);
+            onLoadRef.current(splatMesh, count);
           }
         })
         .catch((error) => {
@@ -117,9 +124,21 @@ function GaussianSplatViewer({
         url: url,
         onLoad: (mesh) => {
           console.log('[GaussianSplatViewer] SplatMesh loaded successfully');
+          console.log('[GaussianSplatViewer] Mesh properties:', Object.keys(mesh || {}));
           setIsLoaded(true);
+          
+          // Try multiple sources for splat count
+          // SparkJS stores splat data in packedSplats after loading
+          const count = mesh?.packedSplats?.size 
+            || mesh?.packedSplats?.numSplats 
+            || mesh?.numSplats
+            || mesh?.geometry?.attributes?.position?.count 
+            || 0;
+          setSplatCount(count);
+          console.log('[GaussianSplatViewer] Splat count:', count);
+          
           if (onLoadRef.current) {
-            onLoadRef.current(mesh);
+            onLoadRef.current(mesh, count);
           }
         }
       });

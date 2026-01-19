@@ -177,9 +177,9 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
   // Viewer position controls
   const [viewerTransform, setViewerTransform] = useState({
     positionX: 0,
-    positionY: 1.6,
+    positionY: 1.8,
     positionZ: -0.4,
-    scale: 1,
+    scale: 0.5,
     rotationY: 0,
   });
   const [splatCount, setSplatCount] = useState(0);

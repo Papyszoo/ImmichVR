@@ -235,15 +235,16 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
     setGeneratingModel(modelKey);
     
     try {
-      // Special handling for KSPLAT and SPLAT virtual entries - these trigger conversion, not generation
-      if (modelKey === 'ksplat' || modelKey === 'splat') {
-        console.log(`[VRThumbnailGallery] Converting PLY to ${modelKey.toUpperCase()}`);
+      // Special handling for KSPLAT virtual entry - triggers conversion, not generation
+      // Note: SPLAT format removed - use PLY or KSPLAT instead
+      if (modelKey === 'ksplat') {
+        console.log(`[VRThumbnailGallery] Converting PLY to KSPLAT`);
         
         // Call convert endpoint
         const response = await fetch(`/api/assets/${selectedPhotoId}/convert`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ from: 'ply', to: modelKey })
+          body: JSON.stringify({ from: 'ply', to: 'ksplat' })
         });
         
         if (!response.ok) {
@@ -331,16 +332,13 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
     
     try {
       // Find the file for this model
-      // Special handling for virtual KSPLAT/SPLAT entries - the file has modelKey 'sharp' but different formats
+      // Special handling for virtual KSPLAT entry - the file has modelKey 'sharp' but different format
       let file;
       if (modelKey === 'ksplat') {
         // KSPLAT is a virtual entry - look for format 'ksplat' with modelKey 'sharp'
         file = photoFiles.find(f => f.modelKey === 'sharp' && f.format === 'ksplat');
-      } else if (modelKey === 'splat') {
-        // SPLAT is a virtual entry - look for format 'splat' with modelKey 'sharp'
-        file = photoFiles.find(f => f.modelKey === 'sharp' && f.format === 'splat');
       } else if (modelKey === 'sharp') {
-        // For SHARP model, specifically look for PLY format to avoid confusion with KSPLAT/SPLAT
+        // For SHARP model, specifically look for PLY format to avoid confusion with KSPLAT
         file = photoFiles.find(f => f.modelKey === 'sharp' && f.format === 'ply');
       } else {
         // For other models, use standard lookup

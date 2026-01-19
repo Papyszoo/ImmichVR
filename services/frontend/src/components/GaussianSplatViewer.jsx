@@ -2,7 +2,8 @@
  * GaussianSplatViewer.jsx
  * 
  * Renders 3D Gaussian Splats in VR using @sparkjsdev/spark's SplatMesh.
- * Supports .ply, .ksplat, .splat, and .spz file formats.
+ * Supports .ply, .ksplat, and .spz file formats. 
+ * Note: .splat format is deprecated - use PLY (SparkJS loads natively) or KSPLAT.
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { useThree } from '@react-three/fiber';

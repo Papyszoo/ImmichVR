@@ -873,6 +873,7 @@ function VRThumbnailGallery({
           {!selectedPhotoId && (
             <TimelineScrubber 
               onScrollToYear={handleScrollToYear}
+              onScroll={(y) => setScrollY(Math.max(0, Math.min(y, totalHeight)))}
               years={displayYears}
               groupPositions={groupPositions}
               scrollY={scrollY}

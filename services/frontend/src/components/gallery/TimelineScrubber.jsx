@@ -9,34 +9,23 @@ function TimelineMarker({ label, position, onClick, isActive, showLabel }) {
   const [hovered, setHovered] = useState(false);
   
   const { scale, color } = useSpring({
-    scale: hovered || isActive ? 1.5 : 1, // Pop effect
+    scale: hovered || isActive ? 1.5 : 1, 
     color: hovered || isActive ? '#3B82F6' : '#888888',
     config: { tension: 300, friction: 20 }
   });
 
   return (
     <AnimatedGroup position={position} scale={scale}>
-      {/* Hit Area (Larger than visible dot) */}
-      <mesh 
-        visible={true} 
-        onClick={(e) => { e.stopPropagation(); onClick(label); }}
-        onPointerOver={(e) => { e.stopPropagation(); setHovered(true); }}
-        onPointerOut={(e) => { e.stopPropagation(); setHovered(false); }}
-      >
-        <planeGeometry args={[0.4, 0.05]} />
-        <meshBasicMaterial transparent opacity={0.0} />
-      </mesh>
-      
-      {/* Dot Marker (The "Tick") */}
+       {/* Dot Marker (Subtle tick) */}
       <mesh position={[-0.03, 0, 0]}>
         <sphereGeometry args={[0.008, 8, 8]} />
-        <meshStandardMaterial color={showLabel ? "#ffffff" : "#666666"} />
+        <meshStandardMaterial color={showLabel ? "#ffffff" : "#555"} emissive={showLabel ? "#555" : "#000"} />
       </mesh>
 
       {/* Label (Conditional) */}
       {showLabel && (
         <AnimatedText
-          fontSize={0.08}
+          fontSize={0.12} // Larger font
           color={color}
           anchorX="left"
           anchorY="middle"
@@ -49,48 +38,31 @@ function TimelineMarker({ label, position, onClick, isActive, showLabel }) {
   );
 }
 
-function TimelineScrubber({ onScrollToYear, groupPositions = {}, scrollY = 0, totalHeight = 1 }) {
-  const visualHeight = 1.5; // Height of the scrubber in VR meters
-  const visualWidth = 0.02;
+function TimelineScrubber({ onScrollToYear, onScroll, groupPositions = {}, scrollY = 0, totalHeight = 1 }) {
+  const [dragging, setDragging] = useState(false);
+  const visualHeight = 2.0; // Taller rail
+  const visualWidth = 0.04;
   
-  // Calculate marker positions based on real gallery content
+  // Calculate marker positions
   const markers = useMemo(() => {
-    // console.log('[TimelineScrubber] Recalc markers. GroupPositions:', Object.keys(groupPositions).length, 'TotalHeight:', totalHeight);
     if (!groupPositions || Object.keys(groupPositions).length === 0) return [];
     
-    // We only want to show Years to avoid clutter
-    const yearsProcessed = new Set();
-    const result = [];
-    
-    // Convert groupPositions to array and sort by Y (ascending/top-down)
-    // groupPositions: { "November 2024": { y: 12.5, year: 2024 } }
-    // Gallery Y starts at 0 at top and increases downwards.
-    // Normalized position = y / totalHeight
-    
-    // Sort by Y (descending because Y gets larger as we go down, but visualY is negative)
-    // Actually we want to process from Top (Y=0) to Bottom.
-    // data.y increases as we go down.
-    
-    // Sort array by realY ascending (0 -> 100)
+    // Sort by realY ascending (0 -> Total)
     const sortedGroup = Object.entries(groupPositions)
         .map(([label, data]) => ({ label, data }))
-        .sort((a, b) => a.data.y - b.data.y);
+        .sort((a, b) => a.data.y - b.data.y); // Ascending Y order (Top to Bottom)
 
-    let lastLabelVisualY = 1000; // Start high
-    const LABEL_THRESHOLD = 0.1; // Min distance between labels (meters)
+    let lastLabelVisualY = 1000;
+    const LABEL_THRESHOLD = 0.15; // Increased threshold for larger font
 
-    sortedGroup.forEach(({ label, data }) => {
-      if (!yearsProcessed.has(data.year)) {
-        yearsProcessed.add(data.year);
-        
+    return sortedGroup.map(({ label, data }, index) => {
         const ratio = Math.min(1, Math.max(0, data.y / totalHeight));
-        const visualY = -ratio * visualHeight;
+        // Map ratio 0->1 to Visual +H/2 -> -H/2
+        const visualY = (0.5 - ratio) * visualHeight;
         
-        // Determine if we should show label
         let showLabel = false;
-        // Always show first (top)
-        if (result.length === 0) showLabel = true;
-        // Show if distance from last label is large enough
+        // Always show first and last
+        if (index === 0 || index === sortedGroup.length - 1) showLabel = true;
         else if (Math.abs(visualY - lastLabelVisualY) > LABEL_THRESHOLD) {
             showLabel = true;
         }
@@ -99,55 +71,90 @@ function TimelineScrubber({ onScrollToYear, groupPositions = {}, scrollY = 0, to
             lastLabelVisualY = visualY;
         }
 
-        result.push({
+        return {
             label: data.year.toString(),
             visualY: visualY,
             realY: data.y,
-            originalLabel: label,
-            showLabel: showLabel
-        });
-      }
+            showLabel
+        };
     });
-    return result;
   }, [groupPositions, totalHeight]);
+
+  // Handle continuous scrubbing
+  const handlePointerMove = (e) => {
+    if (!dragging || !onScroll) return;
+    e.stopPropagation();
+    
+    // Calculate Y relative to center of mesh, but mesh is at 0,0,0 relative to group
+    // e.uv gives normalized coordinates [0,1]
+    if (e.uv) {
+        // UV.y is 0 at bottom, 1 at top for Plane/Box usually?
+        // Let's assume standard UV mapping: 0=bottom, 1=top.
+        // Screen Y (content) 0 is top.
+        // So contentRatio = 1 - uv.y
+        const ratio = 1 - e.uv.y;
+        const targetY = ratio * totalHeight;
+        onScroll(targetY);
+    }
+  };
+
+  const handlePointerDown = (e) => {
+    e.stopPropagation();
+    e.target.setPointerCapture(e.pointerId);
+    setDragging(true);
+    if (e.uv && onScroll) {
+        const ratio = 1 - e.uv.y;
+        onScroll(ratio * totalHeight);
+    }
+  };
+
+  const handlePointerUp = (e) => {
+     e.stopPropagation();
+     e.target.releasePointerCapture(e.pointerId);
+     setDragging(false);
+  };
 
   // Thumb position
   const thumbRatio = Math.min(1, Math.max(0, scrollY / totalHeight));
-  const thumbY = -thumbRatio * visualHeight;
+  const thumbY = (0.5 - thumbRatio) * visualHeight;
 
   return (
-    <group position={[2.8, 1.6, -1.0]} rotation={[0, -0.4, 0]}>
-      {/* Rail */}
-      <mesh position={[0, -visualHeight/2, 0]}>
-        <boxGeometry args={[visualWidth, visualHeight, 0.01]} />
-        <meshStandardMaterial color="#444" />
+    <group position={[2.4, 1.5, -0.8]} rotation={[0, -0.4, 0]}>
+      {/* Interaction Rail (Invisible Hit Box + Visible Bar) */}
+      <mesh 
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerLeave={handlePointerUp} // Safety
+      >
+        {/* Wider hit area for ease of use */}
+        <boxGeometry args={[0.15, visualHeight, 0.02]} /> 
+        <meshBasicMaterial visible={false} /> {/* Invisible hit target */}
+      </mesh>
+      
+      {/* Visible Rail Line */}
+      <mesh>
+        <boxGeometry args={[0.005, visualHeight, 0.005]} />
+        <meshStandardMaterial color="#666" />
       </mesh>
       
       {/* Current Position Thumb */}
-      <mesh position={[0, thumbY, 0.02]}>
-         <sphereGeometry args={[0.03, 16, 16]} />
-         <meshStandardMaterial color="#3B82F6" emissive="#3B82F6" emissiveIntensity={0.5} />
+      <mesh position={[0, thumbY, 0.01]}>
+         <sphereGeometry args={[0.02, 16, 16]} />
+         <meshStandardMaterial color="#3B82F6" emissive="#3B82F6" emissiveIntensity={0.8} />
       </mesh>
 
       {/* Markers */}
-      {markers.map((m, i) => {
-        // Simple sparse labeling logic:
-        // Always show first and last.
-        // For others, only show if distance from previous LABEL is > 0.08 (approx text height)
-        // We perform this check during render mapping, which is slightly inefficient but works for small lists (~50 years).
-        // Better: pre-calc in useMemo. But for now let's just use a simple visually-spaced filter.
-        
-        return (
-          <TimelineMarker
-            key={m.label}
+      {markers.map((m, i) => (
+         <TimelineMarker
+            key={i}
             label={m.label}
-            position={[visualWidth/2 + 0.02, m.visualY, 0]}
-            onClick={() => onScrollToYear(parseInt(m.label))}
-            visualY={m.visualY}
-            isActive={false} 
-          />
-        );
-      })}
+            position={[0.02, m.visualY, 0]} // Close to rail
+            showLabel={m.showLabel}
+            isActive={false}
+            onClick={() => { /* Clicking rail handles scroll now */ }}
+         />
+      ))}
     </group>
   );
 }

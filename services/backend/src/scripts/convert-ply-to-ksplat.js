@@ -52,10 +52,12 @@ async function main() {
         console.log(`Parsed ${splatArray.splatCount} splats`);
         
         // Generate compressed splat buffer
-        // Use undefined for optional params - the library will use smart defaults
+        // Quest 3 optimized settings:
+        // - alphaRemovalThreshold 15: Remove nearly invisible splats (scale 0-255)
+        // - compressionLevel 2: 8-bit SH compression (massive size reduction)
         const splatBufferGenerator = GaussianSplats3D.SplatBufferGenerator.getStandardGenerator(
-            1,          // alphaRemovalThreshold (remove very transparent splats)
-            0,          // compressionLevel (0=none for max compatibility)
+            15,         // alphaRemovalThreshold (remove invisible noise splats)
+            2,          // compressionLevel (2=8-bit SH compression for Quest 3)
             0,          // sectionSize (0=auto)
             undefined,  // sceneCenter (undefined = auto-calculate from data)
             undefined,  // blockSize (undefined = use default)

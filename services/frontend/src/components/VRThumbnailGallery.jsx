@@ -296,7 +296,17 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
     if (!selectedPhotoId) return;
     
     // Find the file ID for this model
-    const file = photoFiles.find(f => f.modelKey === modelKey);
+    // Special handling for virtual KSPLAT entry - the file has modelKey 'sharp' but format 'ksplat'
+    let file;
+    if (modelKey === 'ksplat') {
+      file = photoFiles.find(f => f.modelKey === 'sharp' && f.format === 'ksplat');
+    } else if (modelKey === 'sharp') {
+      // For SHARP model, specifically look for PLY format to avoid deleting KSPLAT
+      file = photoFiles.find(f => f.modelKey === 'sharp' && f.format === 'ply');
+    } else {
+      // For other models, use standard lookup
+      file = photoFiles.find(f => f.modelKey === modelKey);
+    }
     if (!file) return;
     
     try {

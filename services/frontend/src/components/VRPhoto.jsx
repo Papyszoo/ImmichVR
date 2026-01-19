@@ -247,6 +247,12 @@ function VRPhoto({
       const url = URL.createObjectURL(photo.thumbnailBlob);
       setImageUrl(url);
       return () => URL.revokeObjectURL(url);
+    } else if (photo.id) {
+        // OPTIMIZATION: Use direct URL to enable browser caching
+        // The backend proxy handles this route
+        const url = `/api/immich/assets/${photo.id}/thumbnail`;
+        setImageUrl(url);
+        // No cleanup needed for string URLs
     }
   }, [photo.thumbnailUrl, photo.thumbnailBlob, photo.id, fullQualityLoaded]);
 

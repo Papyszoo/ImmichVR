@@ -62,6 +62,23 @@ export const getImmichPhotos = async (page = 0, size = 100) => {
 };
 
 /**
+ * Get Immich timeline buckets
+ */
+export const getImmichTimeline = async () => {
+  const response = await api.get('/immich/timeline');
+  return response.data;
+};
+
+/**
+ * Get Immich assets for a specific timeline bucket
+ * @param {string} bucket - Bucket identifier
+ */
+export const getImmichBucket = async (bucket) => {
+  const response = await api.get(`/immich/timeline/${encodeURIComponent(bucket)}`);
+  return response.data;
+};
+
+/**
  * Get Immich asset thumbnail
  * @param {string} assetId - The asset ID
  * @returns {Promise<Blob>} - Thumbnail image blob

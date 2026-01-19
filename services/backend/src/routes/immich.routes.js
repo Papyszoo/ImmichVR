@@ -229,4 +229,43 @@ router.post('/search', async (req, res) => {
   }
 });
 
+// Get timeline buckets
+router.get('/timeline', async (req, res) => {
+  try {
+    const buckets = await immichConnector.getTimeBuckets();
+    res.json({
+      status: 'success',
+      data: buckets,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to fetch timeline',
+      message: error.message,
+    });
+  }
+});
+
+// Get assets for a specific timeline bucket
+router.get('/timeline/:bucket', async (req, res) => {
+  try {
+    // Decode the bucket identifier (it might have special chars or time format)
+    const bucket = decodeURIComponent(req.params.bucket);
+    const assets = await immichConnector.getTimelineBucket(bucket);
+    
+    // Filter to only include IMAGE/VIDEO if needed (ImmichConnector might return both)
+    // For now returning all, frontend can filter
+    
+    res.json({
+      status: 'success',
+      count: assets.length,
+      data: assets,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: `Failed to fetch bucket ${req.params.bucket}`,
+      message: error.message,
+    });
+  }
+});
+
 module.exports = router;

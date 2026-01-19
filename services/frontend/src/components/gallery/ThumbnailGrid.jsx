@@ -15,7 +15,8 @@ function ThumbnailGrid({
   scrollY,
   depthCache = {},
   groupPositions,
-  setGroupPositions
+  setGroupPositions,
+  disableVerticalShift = false
 }) {
   const { galleryWidth, thumbnailHeight, wallCurvature, wallDistance, gap, depthScale } = settings;
   
@@ -46,9 +47,9 @@ function ThumbnailGrid({
     const headers = [];
     const newGroupPositions = {};
     
-    let globalY = 1.2; // Starting Y position
+    let globalY = 1.6; // Starting Y position
     const rowHeight = thumbnailHeight + gap;
-    const headerHeight = 0.3; // Height for date headers
+    const headerHeight = 0.4; // Height for date headers
     
     dateGroups.forEach((group) => {
       // Record the Y position for this group (for timeline navigation)
@@ -156,12 +157,12 @@ function ThumbnailGrid({
     
     const visibleItems = allItems.items.filter(item => {
       // Calculate effective position in world space after scroll group offset
-      const worldY = item.position[1] - scrollY;
+      const worldY = item.position[1] + scrollY;
       return worldY > cameraY - viewHeight && worldY < cameraY + viewHeight;
     }).map(item => {
       // Calculate actual distance from camera for LOD
       // We need effective world position for distance calc
-      const worldY = item.position[1] - scrollY;
+      const worldY = item.position[1] + scrollY;
       
       const dx = item.position[0] - cameraPos[0];
       const dy = worldY - cameraPos[1];
@@ -177,7 +178,7 @@ function ThumbnailGrid({
     });
     
     const visibleHeaders = allItems.headers.filter(header => {
-      const worldY = header.position[1] - scrollY;
+      const worldY = header.position[1] + scrollY;
       return worldY > cameraY - viewHeight && worldY < cameraY + viewHeight;
     });
     
@@ -185,29 +186,7 @@ function ThumbnailGrid({
   }, [allItems, scrollY]);
 
   return (
-    <group position={[0, -scrollY, 0]}>
-      {/* Title */}
-      <Text
-        position={[0, 2.0, -wallDistance]}
-        fontSize={0.2}
-        color="#ffffff"
-        anchorX="center"
-        anchorY="middle"
-      >
-        VR Photo Gallery
-      </Text>
-      
-      {/* Photo count */}
-      <Text
-        position={[0, 1.8, -wallDistance]}
-        fontSize={0.08}
-        color="#666666"
-        anchorX="center"
-        anchorY="middle"
-      >
-        {photos.length} photos - {visibleData.items.length} visible
-      </Text>
-      
+    <group position={disableVerticalShift ? [0, 0, 0] : [0, -scrollY, 0]}>
       {/* Date headers */}
       {visibleData.headers.map((header) => (
         <Text

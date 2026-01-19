@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import * as THREE from 'three';
 import { Canvas } from '@react-three/fiber';
 import { XR } from '@react-three/xr';
 import { animated } from '@react-spring/three';
@@ -105,7 +106,117 @@ function ViewerItem({ photo, index, selectedIndex, onSelect }) {
 /**
  * VRThumbnailGallery - Main VR gallery component with 3D depth thumbnails
  */
-function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPhoto, onClose, onLoadMore, hasMore = false, loadingMore = false }) {
+// Helper to estimate height of a bucket based on count
+const estimateBucketHeight = (count, columns, rowHeight) => {
+  const rows = Math.ceil(count / columns);
+  return rows * rowHeight;
+};
+
+// Helper to calculate real height from photos including dates
+const calculateRealHeight = (photos, settings) => {
+    // Must match ThumbnailGrid layout logic exactly
+    const rowHeight = settings.thumbnailHeight + settings.gap;
+    const headerHeight = 0.4;
+    const groupGap = 0.2;
+    
+    // Group by date to count headers
+    const dateGroups = new Set();
+    photos.forEach(p => {
+        const dateStr = p.fileCreatedAt || p.localDateTime || p.createdAt;
+        const date = dateStr ? new Date(dateStr) : new Date();
+        const key = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+        dateGroups.add(key);
+    });
+    
+    let currentRowWidth = 0;
+    let rowCount = 1;
+    
+    photos.forEach(photo => {
+      let aspectRatio = 1;
+      if (photo.ratio) {
+          aspectRatio = photo.ratio;
+      } else if (photo.exifInfo?.exifImageWidth && photo.exifInfo?.exifImageHeight) {
+          aspectRatio = photo.exifInfo.exifImageWidth / photo.exifInfo.exifImageHeight;
+      }
+      aspectRatio = Math.max(0.5, Math.min(2.5, aspectRatio));
+      
+      const thumbWidth = settings.thumbnailHeight * aspectRatio + settings.gap;
+      
+      if (currentRowWidth + thumbWidth > settings.galleryWidth && currentRowWidth > 0) {
+        rowCount++;
+        currentRowWidth = thumbWidth;
+      } else {
+        currentRowWidth += thumbWidth;
+      }
+    });
+    
+    const photoHeight = rowCount * rowHeight;
+    const headersHeight = dateGroups.size * (headerHeight + groupGap);
+    const total = photoHeight + headersHeight;
+    
+    // Debug log to trace gaps
+    // console.log(`[HeightCalc] Photos: ${photos.length}, Height: ${total.toFixed(2)}m (Rows: ${rowCount}, Headers: ${dateGroups.size})`);
+    
+    return total;
+};
+
+// Skeleton Grid Component for loading state
+// Skeleton Grid Component for loading state (InstancedMesh for performance)
+const SkeletonGrid = ({ count, width, rowHeight, thumbnailHeight, gap }) => {
+   const meshRef = useRef();
+   const columns = Math.floor(width / (thumbnailHeight + gap)); 
+   
+   // Create a dummy object to compute matrices
+   const dummy = useMemo(() => new THREE.Object3D(), []);
+
+   useEffect(() => {
+     if (!meshRef.current) return;
+     
+     // Cap count at reasonable limit (e.g. 10000 to cover large buckets)
+     // InstancedMesh is performant enough for this.
+     const safeCount = Math.min(count, 10000); 
+     
+     for (let i = 0; i < safeCount; i++) {
+        const col = i % columns;
+        const row = Math.floor(i / columns);
+        
+        // Centered alignment: (col - columns/2 + 0.5)
+        const x = (col - columns / 2 + 0.5) * (thumbnailHeight + gap);
+        const y = -row * rowHeight;
+        
+        dummy.position.set(x, y, 0);
+        dummy.updateMatrix();
+        meshRef.current.setMatrixAt(i, dummy.matrix);
+     }
+     meshRef.current.instanceMatrix.needsUpdate = true;
+     
+     // FIX CULLING: Manually set bounding sphere to encompass the whole grid
+     // Center is roughly at (0, -height/2, 0) with radius height/2
+     if (meshRef.current.geometry) {
+        const totalGridHeight = Math.ceil(safeCount / columns) * rowHeight;
+        meshRef.current.geometry.boundingSphere = new THREE.Sphere(
+            new THREE.Vector3(0, -totalGridHeight / 2, 0), 
+            totalGridHeight // Generous radius
+        );
+     }
+   }, [count, columns, rowHeight, thumbnailHeight, gap, dummy]);
+
+   return (
+     <instancedMesh ref={meshRef} args={[null, null, Math.min(count, 10000)]}>
+       <planeGeometry args={[thumbnailHeight, thumbnailHeight]} />
+       <meshBasicMaterial color="#333" transparent opacity={0.3} />
+     </instancedMesh>
+   );
+};
+
+function VRThumbnailGallery({ 
+    timeline = [], 
+    photoCache = {}, 
+    onLoadBucket, 
+    initialSelectedId = null, 
+    onSelectPhoto, 
+    onClose 
+}) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isInVR, setIsInVR] = useState(false);
   const [settings, setSettings] = useState({
@@ -123,41 +234,54 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
 
   const [scrollY, setScrollY] = useState(0);
   const [depthCache, setDepthCache] = useState({});
-  const [groupPositions, setGroupPositions] = useState({});
+
   const scrollRef = useRef(null);
-  const loadMoreTriggered = useRef(false);
   
   // Viewer State
   const [selectedPhotoId, setSelectedPhotoId] = useState(initialSelectedId);
   
-  // Photo 3D Views Panel state
+  // Photo 3D Views Panel state (keep existing)
   const [photoFiles, setPhotoFiles] = useState([]);
-  const [downloadedModels, setDownloadedModels] = useState(['small']); // Keep for compatibility if needed
-  const [availableModels, setAvailableModels] = useState([]); // Full model metadata
+  const [downloadedModels, setDownloadedModels] = useState(['small']); 
+  const [availableModels, setAvailableModels] = useState([]); 
   const [generatingModel, setGeneratingModel] = useState(null);
-  const generatingRef = useRef(false); // Synchronous lock to prevent multiple concurrent generate calls
-  const [isConverting, setIsConverting] = useState(false); // Prevent duplicate conversion requests
-  const selectingRef = useRef(false); // Synchronous lock to prevent multiple concurrent select/download calls
-  const [activeDepthModel, setActiveDepthModel] = useState(null); // Currently applied depth model
-  const [splatUrl, setSplatUrl] = useState(null); // URL for active Gaussian Splat
-  const [splatFormat, setSplatFormat] = useState('ply'); // Format of active splat (ply, splat, ksplat, spz)
+  const generatingRef = useRef(false);
+  const [isConverting, setIsConverting] = useState(false);
+  const selectingRef = useRef(false);
+  const [activeDepthModel, setActiveDepthModel] = useState(null);
+  const [splatUrl, setSplatUrl] = useState(null);
+  const [splatFormat, setSplatFormat] = useState('ply');
   
-  // Quality Control State
   const [qualityMode, setQualityMode] = useState('HIGH'); 
-  const [dpr, setDpr] = useState(1.5); // Default to decent quality (1.5 is safer than native window.devicePixelRatio)
+  const [dpr, setDpr] = useState(1.5);
+  
+  // Viewer position controls
+  const [viewerTransform, setViewerTransform] = useState({
+    positionX: 0,
+    positionY: 1.8,
+    positionZ: -0.4,
+    scale: 0.5,
+    rotationY: 0,
+  });
+  const [splatCount, setSplatCount] = useState(0);
+
+  // DERIVE PHOTOS (Moved up for access in effects)
+  const photos = useMemo(() => {
+     return timeline
+        .map(bucket => photoCache[bucket.timeBucket] || [])
+        .flat();
+  }, [timeline, photoCache]);
 
   // Callback when lag is detected
   const handlePerformanceDrop = useCallback(() => {
-    // Check setting first!
     if (settings.disableAutoQuality) {
         console.log("Performance drop detected, but auto-optimization is disabled by user.");
         return;
     }
-
     if (qualityMode === 'HIGH') {
       console.log("Switching to LOW quality mode due to performance.");
       setQualityMode('LOW');
-      setDpr(0.75); // Drastically reduce resolution
+      setDpr(0.75); 
     }
   }, [qualityMode, settings.disableAutoQuality]);
   
@@ -173,22 +297,12 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
           setDpr(1.5);
       }
   }, [qualityMode]);
-  
-  // Viewer position controls
-  const [viewerTransform, setViewerTransform] = useState({
-    positionX: 0,
-    positionY: 1.8,
-    positionZ: -0.4,
-    scale: 0.5,
-    rotationY: 0,
-  });
-  const [splatCount, setSplatCount] = useState(0);
-  
+
   // Auto-generate depth when entering photo view
   useEffect(() => {
     if (!selectedPhotoId || !settings.autoGenerateOnEnter) return;
     
-    // Check if depth already exists in cache or in photo metadata (from backend)
+    // Check if depth already exists in cache or in photo metadata
     const photo = photos.find(p => p.id === selectedPhotoId);
     if (depthCache[selectedPhotoId] || photo?.depthUrl) return;
     
@@ -196,20 +310,17 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
     
     const autoGenerate = async () => {
       try {
-        // Lookup model type from availableModels
         const model = availableModels.find(m => m.key === settings.defaultDepthModel);
         if (!model) {
           console.error('Auto-generate: Model not found:', settings.defaultDepthModel);
           return;
         }
         
-        const assetType = model.type || 'depth'; // Default to depth for backwards compatibility
+        const assetType = model.type || 'depth'; 
         console.log(`[VRThumbnailGallery] Auto-generating ${assetType} with model ${settings.defaultDepthModel}`);
         
-        // Call generateAsset with correct type
         const blob = await generateAsset(selectedPhotoId, assetType, settings.defaultDepthModel);
         
-        // For depth maps, cache the blob URL
         if (assetType === 'depth') {
           const url = URL.createObjectURL(blob);
           setDepthCache(prev => ({ ...prev, [selectedPhotoId]: url }));
@@ -243,7 +354,6 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
       return;
     }
     
-    // Clear active model and splat when photo changes
     setActiveDepthModel(null);
     if (splatUrl) {
       URL.revokeObjectURL(splatUrl);
@@ -253,11 +363,9 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
     getPhotoFiles(selectedPhotoId)
       .then(data => setPhotoFiles(data.files || []))
       .catch(err => console.warn('Failed to fetch photo files:', err));
-  }, [selectedPhotoId]); // Note: intentionally not including splatUrl to avoid loop
+  }, [selectedPhotoId]);
 
-  // Fetch available models on mount AND when entering viewer mode
-  // Re-fetching when selectedPhotoId changes ensures the 3D Views panel
-  // shows fresh model status (e.g., after downloading via Settings)
+  // Fetch available models
   useEffect(() => {
     getAIModels()
       .then(data => {
@@ -273,74 +381,43 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
         }
       })
       .catch(err => console.warn('Failed to fetch AI models:', err));
-  }, [selectedPhotoId]); // Re-fetch when photo selection changes
+  }, [selectedPhotoId]);
   
-  // Handle generate asset with specific model
+  // Handle generate asset
   const handleGenerateDepth = useCallback(async (modelKey) => {
-    // Synchronous guard using ref (state updates are async and can allow multiple calls through)
-    if (!selectedPhotoId || generatingRef.current) {
-      console.log(`[handleGenerateDepth] Blocked: selectedPhotoId=${selectedPhotoId}, generatingRef.current=${generatingRef.current}`);
-      return;
-    }
+    if (!selectedPhotoId || generatingRef.current) return;
     
-    // Check if asset already exists (prevent duplicate generation)
     const existingFile = photoFiles.find(f => f.modelKey === modelKey);
-    if (existingFile) {
-      console.log(`Asset for ${modelKey} already exists, skipping generation`);
-      return;
-    }
+    if (existingFile) return;
     
-    // Set synchronous lock immediately
     generatingRef.current = true;
     setGeneratingModel(modelKey);
     
     try {
-      // Special handling for KSPLAT virtual entry - triggers conversion, not generation
-      // Note: SPLAT format removed - use PLY or KSPLAT instead
       if (modelKey === 'ksplat') {
-        console.log(`[VRThumbnailGallery] Converting PLY to KSPLAT`);
-        
-        // Call convert endpoint
         const response = await fetch(`/api/assets/${selectedPhotoId}/convert`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ from: 'ply', to: 'ksplat' })
         });
-        
-        if (!response.ok) {
-          throw new Error(`Conversion failed: ${response.status}`);
-        }
-        
-        const result = await response.json();
-        console.log(`[VRThumbnailGallery] Conversion result:`, result);
-        
-        // Refresh files list
+        if (!response.ok) throw new Error(`Conversion failed`);
         const data = await getPhotoFiles(selectedPhotoId);
         setPhotoFiles(data.files || []);
         return;
       }
       
-      // Lookup model type from availableModels
       const model = availableModels.find(m => m.key === modelKey);
-      if (!model) {
-        console.error('Model not found:', modelKey);
-        return;
-      }
+      if (!model) return;
       
-      const assetType = model.type || 'depth'; // Default to depth for backwards compatibility
-      console.log(`[VRThumbnailGallery] Generating ${assetType} with model ${modelKey}`);
-      
-      // Call generateAsset with correct type
+      const assetType = model.type || 'depth';
       const blob = await generateAsset(selectedPhotoId, assetType, modelKey);
       
-      // For depth maps, cache the blob URL and set as active immediately
       if (assetType === 'depth') {
         const url = URL.createObjectURL(blob);
         setDepthCache(prev => ({ ...prev, [selectedPhotoId]: url }));
         setActiveDepthModel(modelKey);
       }
       
-      // Refresh files list
       const data = await getPhotoFiles(selectedPhotoId);
       setPhotoFiles(data.files || []);
     } catch (err) {
@@ -351,34 +428,27 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
     }
   }, [selectedPhotoId, availableModels, photoFiles]);
   
-  // Handle remove generated file
+  // Handle remove file
   const handleRemoveFile = useCallback(async (modelKey) => {
     if (!selectedPhotoId) return;
     
-    // Find the file ID for this model
-    // Special handling for virtual KSPLAT entry - the file has modelKey 'sharp' but format 'ksplat'
     let file;
     if (modelKey === 'ksplat') {
       file = photoFiles.find(f => f.modelKey === 'sharp' && f.format === 'ksplat');
     } else if (modelKey === 'sharp') {
-      // For SHARP model, specifically look for PLY format to avoid deleting KSPLAT
       file = photoFiles.find(f => f.modelKey === 'sharp' && f.format === 'ply');
     } else {
-      // For other models, use standard lookup
       file = photoFiles.find(f => f.modelKey === modelKey);
     }
     if (!file) return;
     
     try {
       await deletePhotoFile(selectedPhotoId, file.id);
-      // Refresh files list
       const data = await getPhotoFiles(selectedPhotoId);
       setPhotoFiles(data.files || []);
       
-      // If the removed model was active, clear it
       if (activeDepthModel === modelKey) {
         setActiveDepthModel(null);
-        // Clear from depth cache
         setDepthCache(prev => {
           const next = { ...prev };
           delete next[selectedPhotoId];
@@ -390,39 +460,29 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
     }
   }, [selectedPhotoId, photoFiles, activeDepthModel]);
   
-  // Handle selecting a model to apply (depth or splat)
+  // Handle select depth/splat
   const handleSelectDepth = useCallback(async (modelKey) => {
-    // Synchronous guard to prevent multiple concurrent downloads
-    if (!selectedPhotoId || selectingRef.current) {
-      console.log(`[handleSelectDepth] Blocked: selectedPhotoId=${selectedPhotoId}, selectingRef.current=${selectingRef.current}`);
-      return;
-    }
+    if (!selectedPhotoId || selectingRef.current) return;
     
     selectingRef.current = true;
     
     try {
-      // Find the file for this model
-      // Special handling for virtual KSPLAT entry - the file has modelKey 'sharp' but different format
       let file;
       if (modelKey === 'ksplat') {
-        // KSPLAT is a virtual entry - look for format 'ksplat' with modelKey 'sharp'
         file = photoFiles.find(f => f.modelKey === 'sharp' && f.format === 'ksplat');
       } else if (modelKey === 'sharp') {
-        // For SHARP model, specifically look for PLY format to avoid confusion with KSPLAT
         file = photoFiles.find(f => f.modelKey === 'sharp' && f.format === 'ply');
       } else {
-        // For other models, use standard lookup
         file = photoFiles.find(f => f.modelKey === modelKey);
       }
       
       if (!file) {
-        console.warn('No file found for model:', modelKey);
+        // Compatibility: if no file but modelKey is 'small'/'medium'/'large', it might be legacy depth
+        // But we rely on file list now.
         return;
       }
       
-      // For depth maps, fetch and add to cache
       if (file.type === 'depth') {
-        // Clear any active splat
         if (splatUrl) {
           URL.revokeObjectURL(splatUrl);
           setSplatUrl(null);
@@ -435,58 +495,28 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
             const url = URL.createObjectURL(blob);
             setDepthCache(prev => ({ ...prev, [selectedPhotoId]: url }));
             setActiveDepthModel(modelKey);
-          } else {
-            // If download endpoint doesn't exist, try constructing URL from file path
-            // For now, just set active model - the photo may already have depth
-            setActiveDepthModel(modelKey);
           }
-        } catch (err) {
-          console.error('Failed to fetch depth file:', err);
-          // Fallback: just set active model
-          setActiveDepthModel(modelKey);
-        }
+        } catch (err) { console.error(err); }
       } else if (file.type === 'splat') {
-        // For splat models, fetch the splat file
-        // SparkJS supports PLY, KSPLAT, SPLAT, and SPZ formats with web worker parsing
-        console.log('Selected splat model:', modelKey, 'file:', file);
-        
         try {
           const response = await fetch(`/api/assets/${selectedPhotoId}/files/${file.id}/download`);
-          console.log('[Splat] Download response:', response.status, response.statusText);
           if (response.ok) {
             const blob = await response.blob();
-            console.log('[Splat] Blob size:', blob.size, 'type:', blob.type);
+            if (blob.size === 0) return;
             
-            // Check for empty blob (304 Not Modified responses may not have body)
-            if (blob.size === 0) {
-              console.error('[Splat] Downloaded blob is empty - file may not exist or response was cached without body');
-              return;
-            }
-            
-            // Revoke previous splat URL if any
-            if (splatUrl) {
-              URL.revokeObjectURL(splatUrl);
-            }
-            
+            if (splatUrl) URL.revokeObjectURL(splatUrl);
             const url = URL.createObjectURL(blob);
             setSplatUrl(url);
-            setSplatFormat(file.format || 'ply'); // Set format from file metadata
+            setSplatFormat(file.format || 'ply');
             setActiveDepthModel(modelKey);
             
-            // Clear depth cache for this photo so VRPhoto doesn't show depth view while splat is active
             setDepthCache(prev => {
               const newCache = { ...prev };
               delete newCache[selectedPhotoId];
               return newCache;
             });
-            
-            console.log('[Splat] Loaded splat URL:', url, 'format:', file.format, 'blob size:', blob.size);
-          } else {
-            console.error('Failed to download splat file, status:', response.status);
           }
-        } catch (err) {
-          console.error('Failed to fetch splat file:', err);
-        }
+        } catch (err) { console.error(err); }
       }
     } finally {
       selectingRef.current = false;
@@ -495,21 +525,10 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
   
   // Handle KSPLAT conversion
   const handleConvert = useCallback(async (modelKey) => {
-    if (modelKey === 'ksplat') {
-      // Prevent duplicate requests
-      if (isConverting) {
-        console.log('Conversion already in progress, skipping...');
-        return;
-      }
-      
-      console.log('KSPLAT conversion triggered - calling backend...');
+    if (modelKey === 'ksplat' && !isConverting) {
       setIsConverting(true);
-      
       try {
-        const result = await convertPlyToKsplat(selectedPhotoId);
-        console.log('[Convert] Result:', result);
-        
-        // Refresh files to see the new KSPLAT
+        await convertPlyToKsplat(selectedPhotoId);
         const data = await getPhotoFiles(selectedPhotoId);
         setPhotoFiles(data.files || []);
       } catch (err) {
@@ -533,68 +552,124 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
     });
     return unsubscribe;
   }, []);
-  
-  // Get unique years from group positions
-  const years = useMemo(() => {
-    const yearSet = new Set();
-    Object.values(groupPositions).forEach(pos => {
-      yearSet.add(pos.year);
-    });
-    return Array.from(yearSet).sort((a, b) => b - a);
-  }, [groupPositions]);
 
-  // Calculate total content height
-  const totalHeight = useMemo(() => {
+  // --- VIRTUALIZATION ENGINE ---
+  
+  // 1. Calculate Virtual Map (Positions of all buckets)
+  const virtualMap = useMemo(() => {
+    const map = [];
+    let currentY = 0;
     const rowHeight = settings.thumbnailHeight + settings.gap;
-    let currentRowWidth = 0;
-    let rowCount = 1;
-    
-    photos.forEach(photo => {
-      const exif = photo.exifInfo;
-      let aspectRatio = 1;
-      if (photo.ratio) {
-        aspectRatio = photo.ratio;
-      } else if (exif?.exifImageWidth && exif?.exifImageHeight) {
-        aspectRatio = exif.exifImageWidth / exif.exifImageHeight;
-      }
-      aspectRatio = Math.max(0.5, Math.min(2.5, aspectRatio));
-      
-      const thumbWidth = settings.thumbnailHeight * aspectRatio + settings.gap;
-      
-      if (currentRowWidth + thumbWidth > settings.galleryWidth && currentRowWidth > 0) {
-        rowCount++;
-        currentRowWidth = thumbWidth;
-      } else {
-        currentRowWidth += thumbWidth;
-      }
+    const columns = Math.floor(settings.galleryWidth / rowHeight); // Approx columns for estimation
+
+    timeline.forEach(bucket => {
+        const isLoaded = !!photoCache[bucket.timeBucket];
+        let height;
+        
+        if (isLoaded) {
+            height = calculateRealHeight(photoCache[bucket.timeBucket], settings);
+        } else {
+            height = estimateBucketHeight(bucket.count, columns, rowHeight);
+        }
+        
+        map.push({
+            id: bucket.timeBucket,
+            y: currentY,
+            height: height,
+            count: bucket.count,
+            isLoaded
+        });
+        
+        // Add padding between buckets
+        currentY += height + 0.2; // 0.2m gap between months
     });
     
-    return Math.max(2, rowCount * rowHeight + 2); // Add buffer
-  }, [photos, settings.galleryWidth, settings.thumbnailHeight, settings.gap]);
+    return { items: map, totalHeight: currentY };
+  }, [timeline, photoCache, settings]);
 
-  // Photos with depth data merged
-  const photosWithDepth = useMemo(() => {
-    return photos.map(photo => ({
-      ...photo,
-      depthUrl: depthCache[photo.id] || photo.depthUrl
-    }));
-  }, [photos, depthCache]);
+  // Derive Year Positions from Virtual Map for Scrubber
+  const groupPositions = useMemo(() => {
+    const positions = {};
+    if (!virtualMap?.items) return positions;
+
+    virtualMap.items.forEach(item => {
+        const year = parseInt(item.id.substring(0, 4));
+        if (!isNaN(year)) {
+            // First bucket of the year = Top of that year
+            const key = year.toString();
+            if (!positions[key]) {
+                positions[key] = { y: item.y, year: year };
+            }
+        }
+    });
+    // console.log('[VRGallery] Derived GroupPositions:', Object.keys(positions));
+    return positions;
+  }, [virtualMap]);
+
+  const displayYears = useMemo(() => {
+    const years = new Set();
+    timeline.forEach(b => {
+      const y = b.timeBucket.substring(0, 4);
+      if (!isNaN(y)) years.add(parseInt(y));
+    });
+    return Array.from(years).sort((a,b) => b - a);
+  }, [timeline]);
+
+  // 2. Determine Visible Buckets
+  const visibleBuckets = useMemo(() => {
+      const viewportHeight = 8; // Visible area height in meters
+      const buffer = 4; // Lookahead
+      
+      // We assume scrollY is positive (0 to totalHeight)
+      // Content Group is at [0, scrollY, 0]
+      // Buckets are at [0, -bucket.y, 0] relative to Group
+      // WorldY of bucket = scrollY - bucket.y
+      // We want WorldY to be around 1.6 (camera). Range [-2, 6] e.g.
+      
+      return virtualMap.items.filter(item => {
+          const itemTop = -item.y + scrollY; // World Top
+          const itemBottom = -item.y - item.height + scrollY; // World Bottom
+          
+          // Check intersection with viewport [-2, 10] (approx)
+          // Simple visibility check
+          return (itemTop > -10 && itemBottom < 20);
+      });
+  }, [virtualMap, scrollY]);
+
+  // 3. Trigger Loads for Visible Ghosts
+  useEffect(() => {
+      visibleBuckets.forEach(bucket => {
+          if (!bucket.isLoaded && onLoadBucket) {
+             onLoadBucket(bucket.id);
+          }
+      });
+  }, [visibleBuckets, onLoadBucket]);
   
+
+  
+  // --- END VIRTUALIZATION ---
+  
+  const totalHeight = virtualMap.totalHeight;
+
   // Scroll to a specific year
   const handleScrollToYear = useCallback((year) => {
-    const groupEntry = Object.entries(groupPositions).find(([_, pos]) => pos.year === year);
-    if (groupEntry) {
-      const targetY = groupEntry[1].y;
-      setScrollY(targetY - 1.6);
+    // Find first bucket of this year
+    const item = virtualMap.items.find(i => i.id.startsWith(year.toString()));
+    if (item) {
+       setScrollY(item.y + 1.6); 
+    } else {
+        // Fallback or load logic if not in timeline (shouldn't implement if timeline is full)
+        console.warn(`Year ${year} not in timeline`);
     }
-  }, [groupPositions]);
+  }, [virtualMap]);
+
+
 
   // Handle Photo Selection (Enter Viewer)
   const handleSelect = useCallback((photo, position, rotation) => {
     // If not already selected, select it
     if (selectedPhotoId !== photo.id) {
        setSelectedPhotoId(photo.id);
-       // Optionally use position for start animation later
     }
   }, [selectedPhotoId]);
 
@@ -631,10 +706,10 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
       if (settingsOpen) return;
 
       e.preventDefault();
-      const scrollSpeed = 0.002;
+      const scrollSpeed = 0.005; // Slightly faster
       setScrollY(prev => {
-        const newY = prev - e.deltaY * scrollSpeed;
-        return Math.max(-(totalHeight - 1), Math.min(1, newY));
+        const newY = prev + e.deltaY * scrollSpeed;
+        return Math.max(0, Math.min(totalHeight, newY));
       });
     };
 
@@ -663,11 +738,11 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
         return;
       }
 
-      const scrollSpeed = 0.2;
+      const scrollSpeed = 0.5;
       if (e.key === 'ArrowUp' || e.key === 'w') {
-        setScrollY(prev => Math.min(1, prev + scrollSpeed));
+        setScrollY(prev => Math.max(0, prev - scrollSpeed));
       } else if (e.key === 'ArrowDown' || e.key === 's') {
-        setScrollY(prev => Math.max(-(totalHeight - 1), prev - scrollSpeed));
+        setScrollY(prev => Math.min(totalHeight, prev + scrollSpeed));
       }
     };
 
@@ -686,23 +761,6 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
     };
   }, []);
   
-  // Load more trigger
-  useEffect(() => {
-    if (selectedPhotoId) return; // Don't trigger load more in viewer... or maybe we should?
-
-    const scrolledAmount = -scrollY;
-    const threshold = totalHeight - 3; 
-    
-    if (scrolledAmount > threshold && hasMore && !loadingMore && onLoadMore) {
-      if (!loadMoreTriggered.current) {
-        loadMoreTriggered.current = true;
-        onLoadMore();
-      }
-    } else if (scrolledAmount < threshold - 1) {
-      loadMoreTriggered.current = false;
-    }
-  }, [scrollY, totalHeight, hasMore, loadingMore, onLoadMore, selectedPhotoId]);
-
   // Derived selected index
   const selectedIndex = useMemo(() => {
     if (!selectedPhotoId) return -1;
@@ -710,7 +768,6 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
   }, [photos, selectedPhotoId]);
 
   // --- TEST BRIDGE ---
-  // Expose internal state and actions for Playwright E2E testing
   useEffect(() => {
     if (typeof window !== 'undefined') {
       window.__VR_VIEWER_INTERNALS = {
@@ -721,7 +778,7 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
           depthCache,
           settings,
           viewerTransform,
-          photos // Expose photos list to find IDs
+          photos 
         },
         actions: {
             generateAsset: handleGenerateDepth,
@@ -760,36 +817,15 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
         🥽 Enter VR
       </button>
       
-      {/* Timeline Scrubber (Hide in Viewer) */}
-      {!selectedPhotoId && (
-        <TimelineScrubber 
-          groupPositions={groupPositions}
-          onScrollToYear={handleScrollToYear}
-          years={years}
-        />
-      )}
 
-      {/* Scroll indicator (Hide in Viewer) */}
-      {!selectedPhotoId && (
-        <div style={styles.scrollIndicator}>
-          <div 
-            style={{
-              ...styles.scrollThumb,
-              height: `${Math.max(10, (2 / totalHeight) * 100)}%`,
-              top: `${Math.max(0, Math.min(90, ((1 - scrollY) / (totalHeight + 1)) * 100))}%`
-            }}
-          />
-        </div>
-      )}
+
+      {/* Scroll indicator (Removed legacy DOM overlay) */}
 
       {/* Hint */}
       <div style={styles.scrollHint}>
         {selectedPhotoId 
           ? 'Use thumbstick or arrow keys to navigate' 
-          : (loadingMore 
-              ? 'Loading more photos...' 
-              : `Scroll or use ↑↓ to navigate • ${photos.length} photos${hasMore ? '+' : ''}`
-            )
+          : 'Scroll or use ↑↓ to navigate'
         }
       </div>
 
@@ -832,63 +868,93 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
             settings={settings}
             onSettingsChange={setSettings}
           />
-
-          {/* Render Grid if NO photo selected */}
+          
+          {/* Timeline Scrubber (VR Native) */}
           {!selectedPhotoId && (
-             <ThumbnailGrid
-              photos={photosWithDepth}
-              onSelectPhoto={handleSelect}
-              settings={settings}
-              setSettings={setSettings}
-              settingsOpen={settingsOpen}
-              setSettingsOpen={setSettingsOpen}
-              scrollY={scrollY}
-              depthCache={depthCache}
+            <TimelineScrubber 
+              onScrollToYear={handleScrollToYear}
+              years={displayYears}
               groupPositions={groupPositions}
-              setGroupPositions={setGroupPositions}
+              scrollY={scrollY}
+              totalHeight={totalHeight}
             />
+          )}
+          
+          {/* Render Virtualized Buckets if NO photo selected */}
+          {!selectedPhotoId && (
+            <group position={[0, scrollY, 0]}>
+                {visibleBuckets.map(bucket => (
+                    <group key={bucket.id} position={[0, -bucket.y, 0]}>
+                        {bucket.isLoaded ? (
+                            <ThumbnailGrid
+                                photos={photoCache[bucket.id] || []}
+                                onSelectPhoto={handleSelect}
+                                settings={settings}
+                                setSettings={setSettings}
+                                settingsOpen={settingsOpen}
+                                setSettingsOpen={setSettingsOpen}
+                                scrollY={scrollY - bucket.y}
+                                disableVerticalShift={true}
+                                depthCache={depthCache}
+                            />
+                        ) : (
+                            <SkeletonGrid 
+                                count={bucket.count} 
+                                width={settings.galleryWidth}
+                                rowHeight={settings.thumbnailHeight + settings.gap}
+                                thumbnailHeight={settings.thumbnailHeight}
+                                gap={settings.gap}
+                            />
+                        )}
+                        {/* Debug Text for bucket? */}
+                         {/* <Text position={[-3, 0.5, 0]} fontSize={0.2} color="white">{bucket.id}</Text> */}
+                    </group>
+                ))}
+            </group>
           )}
 
           {/* Render Viewer if photo SELECTED */}
           {selectedPhotoId && (
              <group position={[0, 0, 0]}>
                 {/* Render current and adjacent photos - HIDE when splat is active */}
-                {!(splatUrl && (splatFormat === 'ksplat' || splatFormat === 'splat' || splatFormat === 'ply' || splatFormat === 'spz')) && photosWithDepth.map((photo, index) => {
+                {!(splatUrl && (splatFormat === 'ksplat' || splatFormat === 'splat' || splatFormat === 'ply' || splatFormat === 'spz')) && photos.map((photo, index) => {
                    // Only render if close to selected index (optimization)
                    if (Math.abs(index - selectedIndex) > 5) return null;
+                   
+                   // Important: ViewerItem needs absolute Position? 
+                   // Or is it relative to viewer center?
+                   // ViewerItem currently animates based on index offset.
+                   // As long as we pass valid index/selectedIndex, it should work.
+                   
                    return (
                       <ViewerItem 
                         key={photo.id}
                         photo={photo}
                         index={index}
                         selectedIndex={selectedIndex}
-                        onSelect={handleSelect} // Clicking adjacent selects it
+                        onSelect={handleSelect} 
                       />
                    );
                 })}
 
-                {/* VR Back Button - positioned in the gap below main photo */}
+                {/* VR Back Button */}
                 <BackToGridButton onClick={handleCloseViewer} />
                 
-                {/* Gaussian Splat Viewer - renders for PLY, KSPLAT, SPLAT, and SPZ formats (SparkJS supports all) */}
+                {/* Gaussian Splat Viewer */}
                 {splatUrl && (splatFormat === 'ksplat' || splatFormat === 'splat' || splatFormat === 'ply' || splatFormat === 'spz') && (
                   <GaussianSplatViewer
                     splatUrl={splatUrl}
                     quality={qualityMode}
-                    fileType={splatFormat}  /* Explicit format for blob URLs (required for ksplat, splat) */
-                    testMode={false}  /* Using our splat file */
+                    fileType={splatFormat}  
+                    testMode={false}  
                     position={[viewerTransform.positionX, viewerTransform.positionY, viewerTransform.positionZ]}
                     rotation={[Math.PI, viewerTransform.rotationY * (Math.PI / 180), 0]}
                     scale={viewerTransform.scale}
-                    onLoad={(mesh, count) => {
-                      console.log(`[Splat] Viewer loaded (${splatFormat}) count=${count}`);
-                      setSplatCount(count || 0);
-                    }}
+                    onLoad={(mesh, count) => setSplatCount(count || 0)}
                     onError={(err) => console.error('[Splat] Viewer error:', err)}
                   />
                 )}
                 
-                {/* Position controls panel on left side */}
                 <ViewerPositionPanel
                   transform={viewerTransform}
                   onTransformChange={setViewerTransform}
@@ -896,7 +962,6 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
                   position={[-2.5, 1.6, -settings.wallDistance]}
                 />
                 
-                {/* 3D Views Panel on right side of current photo */}
                 <Photo3DViewsPanelWrapper
                   photoId={selectedPhotoId}
                   photoFiles={photoFiles}

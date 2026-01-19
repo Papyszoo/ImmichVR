@@ -153,8 +153,10 @@ function XRScrollController({
       
       if (Math.abs(scrollAccumulator.current) > 0.01) {
         setScrollY(prev => {
-          const newY = prev - scrollAccumulator.current;
-          return Math.max(-(totalHeight - 1), Math.min(1, newY));
+          // Stick UP (negative) should DECREASE scrollY (move up)
+          // Stick DOWN (positive) should INCREASE scrollY (move down)
+          const newY = prev + scrollAccumulator.current;
+          return Math.max(0, Math.min(totalHeight, newY));
         });
         scrollAccumulator.current = 0;
       }

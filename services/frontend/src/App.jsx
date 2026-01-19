@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import VRThumbnailGallery from './components/VRThumbnailGallery';
-import { getImmichPhotos, getImmichThumbnail } from './services/api';
+import { getImmichPhotos, getImmichThumbnail, getImmichTimeline, getImmichBucket } from './services/api';
 
 const PAGE_SIZE = 100;
 
@@ -12,90 +12,75 @@ function App() {
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [currentPage, setCurrentPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
-  const loadedPhotoIds = useRef(new Set());
+  // Timeline state
+  const [timeline, setTimeline] = useState([]);
+  const [photoCache, setPhotoCache] = useState({});
+  const loadingBucketIds = useRef(new Set());
 
   useEffect(() => {
-    loadPhotos(0);
+    loadTimeline();
   }, []);
 
-  const loadPhotos = async (page) => {
-    if (page === 0) {
-      setLoading(true);
-      setError(null);
-      loadedPhotoIds.current.clear();
-    } else {
-      setLoadingMore(true);
-    }
-    
+  const loadTimeline = async () => {
     try {
-      const response = await getImmichPhotos(page, PAGE_SIZE);
-      
-      if (response.data && response.data.length > 0) {
-        // Filter out already loaded photos
-        const newPhotos = response.data.filter(p => !loadedPhotoIds.current.has(p.id));
-        
-        // Load thumbnails for new photos
-        const photosWithThumbnails = await Promise.all(
-          newPhotos.map(async (photo) => {
-            try {
-              loadedPhotoIds.current.add(photo.id);
-              const thumbnailBlob = await getImmichThumbnail(photo.id);
-              const thumbnailUrl = URL.createObjectURL(thumbnailBlob);
-              
-              return {
-                ...photo,
-                thumbnailUrl,
-                thumbnailBlob,
-              };
-            } catch (err) {
-              console.error(`Failed to load thumbnail for ${photo.id}`);
-              return { ...photo, thumbnailUrl: null };
-            }
-          })
-        );
-        
-        const validPhotos = photosWithThumbnails.filter(p => p.thumbnailUrl);
-        
-        if (page === 0) {
-          setPhotos(validPhotos);
-        } else {
-          setPhotos(prev => [...prev, ...validPhotos]);
-        }
-        
-        // Check if there are more photos to load
-        setHasMore(response.data.length === PAGE_SIZE);
-        setCurrentPage(page);
-      } else {
-        setHasMore(false);
+      const response = await getImmichTimeline();
+      if (response.data) {
+        setTimeline(response.data);
       }
     } catch (err) {
-      console.error('Failed to load photos:', err);
-      if (page === 0) {
-        setError(err.message);
-      }
-    } finally {
+      console.warn('Failed to load timeline:', err);
+      setError('Failed to load timeline. Please check connection.');
       setLoading(false);
-      setLoadingMore(false);
+    } finally {
+      setLoading(false); 
     }
   };
-  
-  // Load more photos when requested
-  const loadMorePhotos = useCallback(() => {
-    if (!loadingMore && hasMore) {
-      loadPhotos(currentPage + 1);
+
+  // Load photos for a specific bucket (Virtualized Scroll Data Fetcher)
+  const handleLoadBucket = useCallback(async (bucketId) => {
+    // If already loaded or loading, skip
+    if (photoCache[bucketId] || loadingBucketIds.current.has(bucketId)) return;
+    
+    // Mark as loading to prevent duplicate fetching
+    loadingBucketIds.current.add(bucketId);
+    console.log(`Loading bucket: ${bucketId}`);
+    
+    try {
+      const response = await getImmichBucket(bucketId);
+      if (response.data) {
+        // Process thumbnails if needed, but for now we might just want metadata 
+        // and lazy load thumbnails in the grid? 
+        // For performance, let's just save the data. VRThumbnailGallery will handle thumbnail fetching/blobs?
+        // Actually, existing logic fetched blobs immediately. 
+        // With virtualization, we might get 1000s of items. We should probably NOT fetch 1000 blobs at once.
+        // Let's stick to metadata first. The Grid can fetch thumbnails for visible items?
+        // OR: We fetch small batch of thumbnails?
+        // Given existing architecture uses blob URLs, let's cache metadata first.
+        // We will adapt VRThumbnailGallery to load textures on demand or use a lighter approach.
+        // For now, simple storage.
+        
+        setPhotoCache(prev => ({
+          ...prev,
+          [bucketId]: response.data
+        }));
+      }
+    } catch (err) {
+      console.error(`Failed to load bucket ${bucketId}:`, err);
+    } finally {
+      loadingBucketIds.current.delete(bucketId);
     }
-  }, [loadingMore, hasMore, currentPage]);
+  }, [photoCache]);
 
   const handleSelectPhoto = (photo) => {
     setSelectedPhoto(photo);
   };
 
-  // Loading state
+  // Loading state (initial timeline fetch)
   if (loading) {
     return (
       <div style={styles.loading}>
         <div style={styles.spinner} />
-        <p style={styles.loadingText}>Loading photos...</p>
+        <p style={styles.loadingText}>Loading library...</p>
       </div>
     );
   }
@@ -105,20 +90,19 @@ function App() {
     return (
       <div style={styles.error}>
         <p>Error: {error}</p>
-        <button onClick={() => loadPhotos(0)} style={styles.retryButton}>Retry</button>
+        <button onClick={() => window.location.reload()} style={styles.retryButton}>Retry</button>
       </div>
     );
   }
 
-  // VR Gallery - the only view mode
+  // VR Gallery - Virtualized
   return (
     <VRThumbnailGallery
-      photos={photos}
+      timeline={timeline}
+      photoCache={photoCache}
+      onLoadBucket={handleLoadBucket}
       initialSelectedId={selectedPhoto?.id}
       onSelectPhoto={handleSelectPhoto}
-      onLoadMore={loadMorePhotos}
-      hasMore={hasMore}
-      loadingMore={loadingMore}
     />
   );
 }

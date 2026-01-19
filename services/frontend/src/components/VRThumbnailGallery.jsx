@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Canvas } from '@react-three/fiber';
 import { XR } from '@react-three/xr';
 import { animated } from '@react-spring/three';
+import { Root, Container, Text } from '@react-three/uikit';
 
 // Extracted components
 import xrStore from './xr/xrStore';
@@ -47,6 +48,30 @@ function Photo3DViewsPanelWrapper({ photoId, photoFiles, availableModels, onGene
   );
 }
 
+
+
+
+const BackToGridButton = ({ onClick }) => (
+  <group position={[0, 0.45, -2.0]}>
+    <Root pixelSize={0.005} anchorX="center" anchorY="center">
+      <Container
+        width={80}
+        height={30}
+        backgroundColor="#1F2937"
+        hover={{ backgroundColor: '#3B82F6' }} // Primary blue on hover
+        alignItems="center"
+        justifyContent="center"
+        borderRadius={15}
+        onClick={onClick}
+        cursor="pointer"
+        borderWidth={2}
+        borderColor="#374151"
+      >
+         <Text color="white" fontSize={14}>Back</Text>
+      </Container>
+    </Root>
+  </group>
+);
 
 
 function ViewerItem({ photo, index, selectedIndex, onSelect }) {
@@ -841,6 +866,9 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
                       />
                    );
                 })}
+
+                {/* VR Back Button - positioned in the gap below main photo */}
+                <BackToGridButton onClick={handleCloseViewer} />
                 
                 {/* Gaussian Splat Viewer - renders for PLY, KSPLAT, SPLAT, and SPZ formats (SparkJS supports all) */}
                 {splatUrl && (splatFormat === 'ksplat' || splatFormat === 'splat' || splatFormat === 'ply' || splatFormat === 'spz') && (

@@ -6,7 +6,7 @@ export const VIEWER_CONFIG = {
   selectedPhotoScale: 3,   // Scale factor for selected photo
   adjacentPhotoScale: 0.5, // Scale for side thumbnails
   selectedPosition: [0, 1.6, -2],
-  thumbnailY: 0.6,         // Position below main photo
+  thumbnailY: 0.45,        // Position below main photo
   thumbnailGap: 0.6,       // Gap between thumbnails
   sideZ: -2.0,             // Same depth as main photo (or slightly behind)
 };

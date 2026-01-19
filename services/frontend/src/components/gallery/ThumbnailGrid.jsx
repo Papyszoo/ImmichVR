@@ -205,7 +205,7 @@ function ThumbnailGrid({
         anchorX="center"
         anchorY="middle"
       >
-        {photos.length} photos • {visibleData.items.length} visible
+        {photos.length} photos - {visibleData.items.length} visible
       </Text>
       
       {/* Date headers */}

@@ -55,7 +55,7 @@ function ViewerItem({ photo, index, selectedIndex, onSelect }) {
   const offset = index - selectedIndex;
   
   // Optimization: Only render relevant items
-  if (Math.abs(offset) > 3) return null;
+  if (Math.abs(offset) > 5) return null;
 
   const { position, scale, opacity } = usePhotoViewerAnimation(isSelected, offset, true);
 
@@ -830,7 +830,7 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
                 {/* Render current and adjacent photos - HIDE when splat is active */}
                 {!(splatUrl && (splatFormat === 'ksplat' || splatFormat === 'splat' || splatFormat === 'ply' || splatFormat === 'spz')) && photosWithDepth.map((photo, index) => {
                    // Only render if close to selected index (optimization)
-                   if (Math.abs(index - selectedIndex) > 3) return null;
+                   if (Math.abs(index - selectedIndex) > 5) return null;
                    return (
                       <ViewerItem 
                         key={photo.id}

@@ -497,7 +497,7 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
                                   >
                                     <Container flexDirection="column" gap={4}>
                                       <Text color="#FFFFFF" fontSize={18}>{model.name} ({model.params})</Text>
-                                      <Text color="#9CA3AF" fontSize={14}>{model.memory} • {model.description || ''}</Text>
+                                      <Text color="#9CA3AF" fontSize={14}>{model.memory} - {model.description || ''}</Text>
                                     </Container>
                                   
                                   {isInstalled ? (

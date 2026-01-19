@@ -230,8 +230,8 @@ function VideoDepthPlayer({ media, onClose, onNext, onPrevious }) {
       {/* Playback Controls */}
       <group position={[-2.5, -2.2, 0]}>
         <ControlButton position={[0, 0, 0]} color="#4CAF50" label={isPlaying ? 'Pause' : 'Play'} onClick={handlePlayPause} />
-        <ControlButton position={[0.8, 0, 0]} color="#4CAF50" label="◄" onClick={handlePreviousFrame} />
-        <ControlButton position={[1.5, 0, 0]} color="#4CAF50" label="►" onClick={handleNextFrame} />
+        <ControlButton position={[0.8, 0, 0]} color="#4CAF50" label="<" onClick={handlePreviousFrame} />
+        <ControlButton position={[1.5, 0, 0]} color="#4CAF50" label=">" onClick={handleNextFrame} />
       </group>
 
       {/* Zoom Controls */}
@@ -242,8 +242,8 @@ function VideoDepthPlayer({ media, onClose, onNext, onPrevious }) {
 
       {/* Rotation Controls */}
       <group position={[1.2, -2.2, 0]}>
-        <ControlButton position={[0, 0, 0]} color="#9C27B0" label="↶" onClick={handleRotateLeft} />
-        <ControlButton position={[0.6, 0, 0]} color="#9C27B0" label="↷" onClick={handleRotateRight} />
+        <ControlButton position={[0, 0, 0]} color="#9C27B0" label="Rot L" onClick={handleRotateLeft} />
+        <ControlButton position={[0.6, 0, 0]} color="#9C27B0" label="Rot R" onClick={handleRotateRight} />
       </group>
 
       {/* Close Button */}

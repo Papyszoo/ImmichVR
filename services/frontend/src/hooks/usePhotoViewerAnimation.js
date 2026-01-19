@@ -1,13 +1,14 @@
 import { useSpring } from '@react-spring/three';
 
 export const VIEWER_CONFIG = {
-  adjacentPhotosCount: 2,  // Show 2 prev + 2 next
+  adjacentPhotosCount: 5,  // Show 5 prev + 5 next
   animationDuration: 0.5,  // seconds
   selectedPhotoScale: 3,   // Scale factor for selected photo
   adjacentPhotoScale: 0.5, // Scale for side thumbnails
   selectedPosition: [0, 1.6, -2],
-  sideOffset: 1.5,
-  sideZ: -2.5,
+  thumbnailY: 0.6,         // Position below main photo
+  thumbnailGap: 0.6,       // Gap between thumbnails
+  sideZ: -2.0,             // Same depth as main photo (or slightly behind)
 };
 
 /**
@@ -42,17 +43,13 @@ export function usePhotoViewerAnimation(isSelected, offsetIndex, isVisible) {
     const isAdjacent = Math.abs(offsetIndex) <= VIEWER_CONFIG.adjacentPhotosCount;
     
     if (isAdjacent) {
-      const direction = Math.sign(offsetIndex);
-      // Position adjacent photos to the sides
-      // 1 -> 1.5, 2 -> 3.0, etc.
-      const x = direction * (1.5 + (Math.abs(offsetIndex) - 1) * 0.5); 
-      // Or simply:
-      const sideX = offsetIndex * VIEWER_CONFIG.sideOffset;
-
+      // Position adjacent photos in a row below the main photo
+      const x = offsetIndex * VIEWER_CONFIG.thumbnailGap;
+      
       return {
-        position: [sideX, 1.6, VIEWER_CONFIG.sideZ],
+        position: [x, VIEWER_CONFIG.thumbnailY, VIEWER_CONFIG.sideZ],
         scale: VIEWER_CONFIG.adjacentPhotoScale,
-        opacity: 0.6, // Slight transparency for side photos
+        opacity: 0.8, // Higher opacity for visibility
       };
     }
 

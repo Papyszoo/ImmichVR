@@ -100,7 +100,7 @@ function ViewerPositionPanel({ transform, onTransformChange, splatCount = 0, pos
         >
           {/* Header */}
           <Container flexDirection="row" alignItems="center" justifyContent="space-between" marginBottom={8}>
-            <Text fontSize={22} color={COLORS.textMain}>🎯 Position</Text>
+            <Text fontSize={22} color={COLORS.textMain}>Position</Text>
             {splatCount > 0 && (
               <Container backgroundColor={COLORS.primary} paddingX={8} paddingY={4} borderRadius={6}>
                 <Text fontSize={14} color="white">{splatCount.toLocaleString()} splats</Text>

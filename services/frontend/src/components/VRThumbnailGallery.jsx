@@ -8,6 +8,7 @@ import xrStore from './xr/xrStore';
 import XRScrollController from './xr/XRScrollController';
 import UIKitSettingsPanel from './vr-ui/uikit/UIKitSettingsPanel';
 import Photo3DViewsPanel from './vr-ui/uikit/Photo3DViewsPanel';
+import ViewerPositionPanel from './vr-ui/uikit/ViewerPositionPanel';
 
 import CameraController from './gallery/CameraController';
 import ThumbnailGrid from './gallery/ThumbnailGrid';
@@ -113,6 +114,15 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
   const [activeDepthModel, setActiveDepthModel] = useState(null); // Currently applied depth model
   const [splatUrl, setSplatUrl] = useState(null); // URL for active Gaussian Splat
   const [splatFormat, setSplatFormat] = useState('ply'); // Format of active splat (ply, splat, ksplat, spz)
+  
+  // Viewer position controls
+  const [viewerTransform, setViewerTransform] = useState({
+    positionX: 0,
+    positionY: 1.6,
+    positionZ: -0.4,
+    scale: 1,
+    rotationY: 0,
+  });
   
   // Auto-generate depth when entering photo view
   useEffect(() => {
@@ -641,13 +651,15 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
           generatingModel,
           depthCache,
           settings,
+          viewerTransform,
           photos // Expose photos list to find IDs
         },
         actions: {
             generateAsset: handleGenerateDepth,
             removeAsset: handleRemoveFile,
             selectPhoto: (id) => setSelectedPhotoId(id),
-            setSettings: setSettings
+            setSettings: setSettings,
+            setViewerTransform: setViewerTransform
         }
       };
     }
@@ -783,13 +795,20 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
                     splatUrl={splatUrl}
                     fileType={splatFormat}  /* Explicit format for blob URLs (required for ksplat, splat) */
                     testMode={false}  /* Using our splat file */
-                    position={[0, 1.5, 0]}  /* Center splat at viewer position for immersive experience */
-                    rotation={[Math.PI, 0, 0]}  /* Flip 180° around X axis to fix upside-down orientation */
-                    scale={0.1}
-                    onLoad={() => console.log(`[Splat] Viewer loaded (${splatFormat}) at [0, 1.5, 0] scale=0.1`)}
+                    position={[viewerTransform.positionX, viewerTransform.positionY, viewerTransform.positionZ]}
+                    rotation={[Math.PI, viewerTransform.rotationY * (Math.PI / 180), 0]}
+                    scale={viewerTransform.scale}
+                    onLoad={() => console.log(`[Splat] Viewer loaded (${splatFormat}) at [${viewerTransform.positionX}, ${viewerTransform.positionY}, ${viewerTransform.positionZ}] scale=${viewerTransform.scale}`)}
                     onError={(err) => console.error('[Splat] Viewer error:', err)}
                   />
                 )}
+                
+                {/* Position controls panel on left side */}
+                <ViewerPositionPanel
+                  transform={viewerTransform}
+                  onTransformChange={setViewerTransform}
+                  position={[-2.5, 1.6, -settings.wallDistance]}
+                />
                 
                 {/* 3D Views Panel on right side of current photo */}
                 <Photo3DViewsPanelWrapper
@@ -801,7 +820,7 @@ function VRThumbnailGallery({ photos = [], initialSelectedId = null, onSelectPho
                   onRemove={handleRemoveFile}
                   onSelect={handleSelectDepth}
                   onConvert={handleConvert}
-                  position={[1.7, 1.6, -settings.wallDistance]}
+                  position={[2.5, 1.6, -settings.wallDistance]}
                 />
              </group>
           )}

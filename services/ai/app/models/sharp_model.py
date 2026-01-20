@@ -232,6 +232,15 @@ class SharpModel:
             self.INTERNAL_SHAPE
         )
         
+        # Cleanup intermediate tensors
+        del gaussians_ndc
+        del image_resized_pt
+        del image_pt
+        del intrinsics
+        del intrinsics_resized
+        del view_matrix
+        del disparity_factor
+        
         t3 = time.time()
         logger.info(f"[SharpModel] Postprocessing: {t3 - t2:.3f}s")
         
@@ -266,6 +275,11 @@ class SharpModel:
             t_end_save = time.time()
             logger.info(f"[SharpModel] Save PLY: {t_end_save - t_start_save:.3f}s")
             
+            # Explicit cleanup
+            del gaussians
+            del image
+            gc.collect()
+            
             logger.info(f"[SharpModel] Saved to {output_path}")
             return str(output_path)
             
@@ -278,7 +292,6 @@ class SharpModel:
             if 'image_resized_pt' in locals(): del image_resized_pt
             if 'gaussians' in locals(): del gaussians
             
-            import gc
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()

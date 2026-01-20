@@ -5,7 +5,7 @@ import { useSpring, animated } from '@react-spring/three';
 const AnimatedText = animated(Text);
 const AnimatedGroup = animated.group;
 
-function TimelineMarker({ label, position, onClick, isActive, showLabel }) {
+function TimelineMarker({ label, position, isActive, showLabel }) {
   const [hovered, setHovered] = useState(false);
   
   const { scale, color } = useSpring({
@@ -53,18 +53,19 @@ function TimelineScrubber({ onScrollToYear, onScroll, groupPositions = {}, scrol
         .sort((a, b) => a.data.y - b.data.y); // Ascending Y order (Top to Bottom)
 
     let lastLabelVisualY = 1000;
-    const LABEL_THRESHOLD = 0.15; // Increased threshold for larger font
+    const LABEL_THRESHOLD = 0.08; 
 
     return sortedGroup.map(({ label, data }, index) => {
         const ratio = Math.min(1, Math.max(0, data.y / totalHeight));
-        // Map ratio 0->1 to Visual +H/2 -> -H/2
         const visualY = (0.5 - ratio) * visualHeight;
         
         let showLabel = false;
+        
         // Always show first and last
-        if (index === 0 || index === sortedGroup.length - 1) showLabel = true;
-        else if (Math.abs(visualY - lastLabelVisualY) > LABEL_THRESHOLD) {
-            showLabel = true;
+        if (index === 0 || index === sortedGroup.length - 1) {
+             showLabel = true;
+        } else if (Math.abs(visualY - lastLabelVisualY) > LABEL_THRESHOLD) {
+             showLabel = true;
         }
         
         if (showLabel) {
@@ -132,18 +133,18 @@ function TimelineScrubber({ onScrollToYear, onScroll, groupPositions = {}, scrol
         onPointerLeave={handlePointerUp} // Safety
       >
         {/* Wider hit area for ease of use */}
-        <boxGeometry args={[0.15, visualHeight, 0.02]} /> 
+        <boxGeometry args={[0.2, visualHeight, 0.05]} /> 
         <meshBasicMaterial visible={false} /> {/* Invisible hit target */}
       </mesh>
       
       {/* Visible Rail Line */}
-      <mesh>
+      <mesh position={[0, 0, -0.01]}>
         <boxGeometry args={[0.005, visualHeight, 0.005]} />
         <meshStandardMaterial color="#666" />
       </mesh>
       
       {/* Current Position Thumb */}
-      <mesh position={[0, thumbY, 0.01]}>
+      <mesh position={[0, thumbY, 0.01]} pointerEvents="none">
          <sphereGeometry args={[0.02, 16, 16]} />
          <meshStandardMaterial color="#3B82F6" emissive="#3B82F6" emissiveIntensity={0.8} />
       </mesh>
@@ -153,10 +154,9 @@ function TimelineScrubber({ onScrollToYear, onScroll, groupPositions = {}, scrol
          <TimelineMarker
             key={i}
             label={m.label}
-            position={[0.02, m.visualY, 0]} // Close to rail
+            position={[0.02, m.visualY, 0]} // Close to rail, single column
             showLabel={m.showLabel}
             isActive={false}
-            onClick={() => { /* Clicking rail handles scroll now */ }}
          />
       ))}
     </group>

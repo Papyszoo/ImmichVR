@@ -731,13 +731,19 @@ function VRThumbnailGallery({
     if (!virtualMap.items) return groups;
     
     virtualMap.items.forEach(item => {
-        const date = new Date(item.id);
-        const year = date.getFullYear();
+        // Robust Year extraction
+        const yearStr = item.id.substring(0, 4); 
+        const year = parseInt(yearStr, 10);
+        
         if (isNaN(year)) return;
         
         if (!groups[year]) {
              groups[year] = { id: year, y: item.y, count: 0, label: year.toString() };
         }
+        
+        // Update Y to the current item's Y
+        // Since we iterate Newest->Oldest (Dec->Jan), the last update will be the position of January.
+        groups[year].y = item.y; 
         groups[year].count += item.count;
     });
     
@@ -951,7 +957,7 @@ function VRThumbnailGallery({
         🥽 Enter VR
       </button>
       
-
+      
 
       {/* Scroll indicator (Removed legacy DOM overlay) */}
 
@@ -1015,7 +1021,7 @@ function VRThumbnailGallery({
             <TimelineScrubber 
               onScrollToYear={handleScrollToYear}
               onScroll={(y) => setScrollY(Math.max(0, Math.min(y, totalHeight)))}
-              years={displayYears}
+              years={displayYears} // Note: This prop is not actually used in TimelineScrubber, it uses groupPositions
               groupPositions={groupPositions}
               scrollY={scrollY}
               totalHeight={totalHeight}

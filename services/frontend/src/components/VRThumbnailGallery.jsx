@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from 'react';
 import * as THREE from 'three';
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useFrame } from '@react-three/fiber';
 import { XR } from '@react-three/xr';
 import { animated } from '@react-spring/three';
 import { Root, Container, Text } from '@react-three/uikit';
@@ -103,13 +103,68 @@ function ViewerItem({ photo, index, selectedIndex, onSelect }) {
   );
 }
 
+// --- SCROLL ANCHORING COMPONENT (Must be inside Canvas) ---
+function ScrollAnchoring({ virtualMap, visibleBuckets, scrollY, setScrollY }) {
+  const prevVirtualMapRef = useRef(null);
+  const scrollAnchorRef = useRef({ id: null, offset: 0 });
+
+  useLayoutEffect(() => {
+     if (!prevVirtualMapRef.current || !scrollAnchorRef.current.id) {
+         prevVirtualMapRef.current = virtualMap;
+         return;
+     }
+     
+     // Find where the anchor is now
+     const anchorId = scrollAnchorRef.current.id;
+     
+     const oldItem = prevVirtualMapRef.current.items.find(i => i.id === anchorId);
+     const newItem = virtualMap.items.find(i => i.id === anchorId);
+     
+     if (oldItem && newItem) {
+         // The item moved from oldItem.y to newItem.y
+         // The shift is (newItem.y - oldItem.y)
+         // We must ADD this shift to scrollY to keep the camera relative to the item.
+         const delta = newItem.y - oldItem.y;
+         
+         if (Math.abs(delta) > 0.001) {
+            setScrollY(prev => prev + delta);
+         }
+     }
+     
+     prevVirtualMapRef.current = virtualMap;
+  }, [virtualMap, setScrollY]);
+  
+  // Update Anchor *continuously* based on scroll
+  useFrame(() => {
+      // Find the item at top of screen (scrollY)
+      // Optimization: use visibleBuckets[0]
+      if (visibleBuckets.length > 0) {
+          const top = visibleBuckets[0];
+          scrollAnchorRef.current = {
+              id: top.id,
+              offset: scrollY - top.y // Distance into the bucket
+          };
+      }
+  });
+
+  return null;
+}
+
+
 /**
  * VRThumbnailGallery - Main VR gallery component with 3D depth thumbnails
  */
 // Helper to estimate height of a bucket based on count
+// Helper to estimate height of a bucket based on count
 const estimateBucketHeight = (count, columns, rowHeight) => {
   const rows = Math.ceil(count / columns);
-  return rows * rowHeight;
+  
+  // Heuristic: Assume roughly 1 date header for every 8 photos
+  // A header is 0.4m + 0.2m gap = 0.6m
+  const estimatedDateGroups = Math.max(1, Math.ceil(count / 8));
+  const headerSpace = estimatedDateGroups * (0.4 + 0.2);
+  
+  return rows * rowHeight + headerSpace;
 };
 
 // Helper to calculate real height from photos including dates
@@ -119,45 +174,55 @@ const calculateRealHeight = (photos, settings) => {
     const headerHeight = 0.4;
     const groupGap = 0.2;
     
-    // Group by date to count headers
-    const dateGroups = new Set();
-    photos.forEach(p => {
-        const dateStr = p.fileCreatedAt || p.localDateTime || p.createdAt;
-        const date = dateStr ? new Date(dateStr) : new Date();
-        const key = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
-        dateGroups.add(key);
-    });
-    
-    let currentRowWidth = 0;
-    let rowCount = 1;
+    // 1. Group by date (Logical Grouping)
+    const dateGroups = [];
+    let currentGroup = null;
     
     photos.forEach(photo => {
-      let aspectRatio = 1;
-      if (photo.ratio) {
-          aspectRatio = photo.ratio;
-      } else if (photo.exifInfo?.exifImageWidth && photo.exifInfo?.exifImageHeight) {
-          aspectRatio = photo.exifInfo.exifImageWidth / photo.exifInfo.exifImageHeight;
-      }
-      aspectRatio = Math.max(0.5, Math.min(2.5, aspectRatio));
-      
-      const thumbWidth = settings.thumbnailHeight * aspectRatio + settings.gap;
-      
-      if (currentRowWidth + thumbWidth > settings.galleryWidth && currentRowWidth > 0) {
-        rowCount++;
-        currentRowWidth = thumbWidth;
-      } else {
-        currentRowWidth += thumbWidth;
-      }
+        const dateStr = photo.fileCreatedAt || photo.localDateTime || photo.createdAt;
+        const date = dateStr ? new Date(dateStr) : new Date();
+        const key = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+        
+        if (!currentGroup || currentGroup.label !== key) {
+            currentGroup = { label: key, photos: [] };
+            dateGroups.push(currentGroup);
+        }
+        currentGroup.photos.push(photo);
     });
     
-    const photoHeight = rowCount * rowHeight;
-    const headersHeight = dateGroups.size * (headerHeight + groupGap);
-    const total = photoHeight + headersHeight;
+    // 2. Simulate Layout per Group
+    let totalHeight = 0;
     
-    // Debug log to trace gaps
-    // console.log(`[HeightCalc] Photos: ${photos.length}, Height: ${total.toFixed(2)}m (Rows: ${rowCount}, Headers: ${dateGroups.size})`);
-    
-    return total;
+    dateGroups.forEach(group => {
+        totalHeight += headerHeight;
+        
+        let currentRowWidth = 0;
+        let rowCount = 1;
+        
+        group.photos.forEach(photo => {
+            let aspectRatio = 1;
+            if (photo.ratio) {
+               aspectRatio = photo.ratio;
+            } else if (photo.exifInfo?.exifImageWidth && photo.exifInfo?.exifImageHeight) {
+               aspectRatio = photo.exifInfo.exifImageWidth / photo.exifInfo.exifImageHeight;
+            }
+            aspectRatio = Math.max(0.5, Math.min(2.5, aspectRatio));
+            
+            const thumbWidth = settings.thumbnailHeight * aspectRatio + settings.gap;
+            
+            if (currentRowWidth + thumbWidth > settings.galleryWidth && currentRowWidth > 0) {
+               rowCount++;
+               currentRowWidth = thumbWidth;
+            } else {
+               currentRowWidth += thumbWidth;
+            }
+        });
+        
+        totalHeight += rowCount * rowHeight;
+        totalHeight += groupGap;
+    });
+
+    return totalHeight;
 };
 
 // Skeleton Grid Component for loading state
@@ -540,27 +605,101 @@ function VRThumbnailGallery({
   }, [selectedPhotoId, isConverting]);
 
   
-  // Track VR session state
-  useEffect(() => {
-    const unsubscribe = xrStore.subscribe((state) => {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('force2d') === 'true') {
-         setIsInVR(false);
-         return;
-      }
-      setIsInVR(state.session !== null);
-    });
-    return unsubscribe;
-  }, []);
-
-  // --- VIRTUALIZATION ENGINE ---
+  // --- METADATA PRE-FETCH & SCROLL ANCHORING ---
   
+  // Queue metadata fetch for all buckets to ensure accurate timeline
+  useEffect(() => {
+    if (!timeline || timeline.length === 0) return;
+    
+    const fetchMetadata = async () => {
+        // Prioritize buckets: First 20, then the rest
+        // We can do this simply by iterating.
+        // To avoid flooding, we use a concurrency pool.
+        
+        const queue = [...timeline];
+        // Sort queue? Maybe center out from Viewport? For now just top-down is fine for static target.
+        
+        const WORKER_COUNT = 3;
+        let active = 0;
+        
+        const processNext = async () => {
+            if (queue.length === 0) return;
+            const bucket = queue.shift();
+            
+            // Skip if already in photoCache
+            if (photoCache[bucket.timeBucket]) {
+                processNext();
+                return;
+            }
+            
+            active++;
+            try {
+               const photos = await api.getImmichBucket(bucket.timeBucket);
+               // We only strictly *need* the metadata (ratio), but caching the photos is fine 
+               // as long as we don't render them (memory concerns?).
+               // JS Objects are cheap. 100k objects ~ 20MB RAM. Fine.
+               setPhotoCache(prev => ({ ...prev, [bucket.timeBucket]: photos }));
+            } catch (e) {
+               console.warn("Meta fetch failed", e);
+            } finally {
+               active--;
+               processNext();
+            }
+        };
+        
+        // Kickoff workers
+        for (let i=0; i<WORKER_COUNT; i++) processNext();
+    };
+    
+    fetchMetadata();
+  }, [timeline]); // Run once when timeline arrives
+
+  // Scroll Anchoring: Keep the current view stable when heights change
+
+
+
   // 1. Calculate Virtual Map (Positions of all buckets)
   const virtualMap = useMemo(() => {
+    // 1. Calculate Virtual Map with Adaptive Estimation (REMOVED: Now we use Pre-fetch)
+    // Actually we keep Adaptive as a fallback until Pre-fetch finishes.
+    
+    // ... [Original Logic]
+    // But since we are updating photoCache via the pre-fetcher, 
+    // `isLoaded` will become true for everything eventually.
+    // So we just need the standard logic, but need to handle "isLoaded but not rendered" 
+    // (i.e. separate metadata cache from texture cache).
+    // Wait, `photoCache` stores the JSON objects. That IS what we use for calculation.
+    // So as soon as `fetchMetadata` updates `photoCache`, the `isLoaded` branch triggers 
+    // and we calculate Exact Height.
+    
+    // So simply modifying the pre-fetcher is enough!
+    // And restoring the simpler map logic (or keeping adaptive as fallback).
+    
+    // Let's go back to simpler map logic but kept Adaptive as fallback for the first few seconds.
+
     const map = [];
     let currentY = 0;
-    const rowHeight = settings.thumbnailHeight + settings.gap;
-    const columns = Math.floor(settings.galleryWidth / rowHeight); // Approx columns for estimation
+    
+    // Compute dynamic average for FALLBACK
+    let totalKnownCnt = 0;
+    let totalKnownH = 0;
+    timeline.forEach(bucket => {
+        if (photoCache[bucket.timeBucket]) {
+             const h = calculateRealHeight(photoCache[bucket.timeBucket], settings);
+             totalKnownH += h;
+             totalKnownCnt += bucket.count;
+        }
+    });
+    
+    let avgHeightPerPhoto = 0.05; // Fallback
+    if (totalKnownCnt > 0) avgHeightPerPhoto = totalKnownH / totalKnownCnt;
+    else {
+        const rowHeight = settings.thumbnailHeight + settings.gap;
+        const avgWidth = settings.thumbnailHeight * 1.33 + settings.gap; // 4:3
+        const columns = Math.floor(settings.galleryWidth / avgWidth);
+        const estRowH = rowHeight + (0.6/8); // header overhead
+        avgHeightPerPhoto = estRowH / columns;
+    }
 
     timeline.forEach(bucket => {
         const isLoaded = !!photoCache[bucket.timeBucket];
@@ -569,7 +708,7 @@ function VRThumbnailGallery({
         if (isLoaded) {
             height = calculateRealHeight(photoCache[bucket.timeBucket], settings);
         } else {
-            height = estimateBucketHeight(bucket.count, columns, rowHeight);
+            height = bucket.count * avgHeightPerPhoto;
         }
         
         map.push({
@@ -580,8 +719,7 @@ function VRThumbnailGallery({
             isLoaded
         });
         
-        // Add padding between buckets
-        currentY += height + 0.2; // 0.2m gap between months
+        currentY += height + 0.2;
     });
     
     return { items: map, totalHeight: currentY };
@@ -589,21 +727,21 @@ function VRThumbnailGallery({
 
   // Derive Year Positions from Virtual Map for Scrubber
   const groupPositions = useMemo(() => {
-    const positions = {};
-    if (!virtualMap?.items) return positions;
-
+    const groups = {};
+    if (!virtualMap.items) return groups;
+    
     virtualMap.items.forEach(item => {
-        const year = parseInt(item.id.substring(0, 4));
-        if (!isNaN(year)) {
-            // First bucket of the year = Top of that year
-            const key = year.toString();
-            if (!positions[key]) {
-                positions[key] = { y: item.y, year: year };
-            }
+        const date = new Date(item.id);
+        const year = date.getFullYear();
+        if (isNaN(year)) return;
+        
+        if (!groups[year]) {
+             groups[year] = { id: year, y: item.y, count: 0, label: year.toString() };
         }
+        groups[year].count += item.count;
     });
-
-    return positions;
+    
+    return groups;
   }, [virtualMap]);
 
   const displayYears = useMemo(() => {
@@ -855,6 +993,13 @@ function VRThumbnailGallery({
              onNextPhoto={handleNext}
              onPrevPhoto={handlePrev}
              onCloseViewer={handleCloseViewer}
+          />
+          
+          <ScrollAnchoring 
+             virtualMap={virtualMap}
+             visibleBuckets={visibleBuckets}
+             scrollY={scrollY}
+             setScrollY={setScrollY}
           />
 
           {/* UIKit Settings Panel (renders in 3D space) */}

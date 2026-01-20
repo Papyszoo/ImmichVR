@@ -117,6 +117,10 @@ function TimelineScrubber({ onScrollToYear, onScroll, groupPositions = {}, scrol
   // Thumb position
   const thumbRatio = Math.min(1, Math.max(0, scrollY / totalHeight));
   const thumbY = (0.5 - thumbRatio) * visualHeight;
+  
+  // Debug scroll/height
+  // console.log(`[Scrubber] Scroll: ${scrollY.toFixed(2)} / ${totalHeight.toFixed(2)} (Ratio: ${thumbRatio.toFixed(3)}) -> ThumbY: ${thumbY.toFixed(3)}`);
+
 
   return (
     <group position={[2.8, 1.5, -3]} rotation={[0, -0.4, 0]}>

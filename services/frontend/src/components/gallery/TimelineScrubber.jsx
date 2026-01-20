@@ -40,8 +40,8 @@ function TimelineMarker({ label, position, onClick, isActive, showLabel }) {
 
 function TimelineScrubber({ onScrollToYear, onScroll, groupPositions = {}, scrollY = 0, totalHeight = 1 }) {
   const [dragging, setDragging] = useState(false);
-  const visualHeight = 2.0; // Taller rail
-  const visualWidth = 0.04;
+  const visualHeight = 3; // Taller rail
+  const visualWidth = 0.06;
   
   // Calculate marker positions
   const markers = useMemo(() => {
@@ -119,7 +119,7 @@ function TimelineScrubber({ onScrollToYear, onScroll, groupPositions = {}, scrol
   const thumbY = (0.5 - thumbRatio) * visualHeight;
 
   return (
-    <group position={[2.4, 1.5, -0.8]} rotation={[0, -0.4, 0]}>
+    <group position={[2.8, 1.5, -3]} rotation={[0, -0.4, 0]}>
       {/* Interaction Rail (Invisible Hit Box + Visible Bar) */}
       <mesh 
         onPointerDown={handlePointerDown}

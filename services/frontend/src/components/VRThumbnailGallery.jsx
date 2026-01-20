@@ -220,7 +220,7 @@ function VRThumbnailGallery({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isInVR, setIsInVR] = useState(false);
   const [settings, setSettings] = useState({
-    galleryWidth: 6,        // Width in meters
+    galleryWidth: 5.5,        // Width in meters
     thumbnailHeight: 0.5,   // Height in meters (50cm)
     wallCurvature: 0,       // 0 = flat, 1 = fully curved
     depthScale: 0.1,        // Depth displacement amount
@@ -602,7 +602,7 @@ function VRThumbnailGallery({
             }
         }
     });
-    // console.log('[VRGallery] Derived GroupPositions:', Object.keys(positions));
+
     return positions;
   }, [virtualMap]);
 
@@ -806,11 +806,7 @@ function VRThumbnailGallery({
         <button style={styles.backButton} onClick={handleCloseViewer}>
            ← Back to Grid
         </button>
-      ) : (
-        <button style={styles.backButton} onClick={onClose}>
-          ← Back
-        </button>
-      )}
+      ) : null}
 
       {/* VR Button */}
       <button style={styles.vrButton} onClick={() => xrStore.enterVR()}>

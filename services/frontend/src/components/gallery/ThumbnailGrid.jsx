@@ -15,7 +15,7 @@ function ThumbnailGrid({
   scrollY,
   depthCache = {},
   groupPositions,
-  setGroupPositions,
+
   disableVerticalShift = false
 }) {
   const { galleryWidth, thumbnailHeight, wallCurvature, wallDistance, gap, depthScale } = settings;
@@ -103,12 +103,7 @@ function ThumbnailGrid({
       globalY -= 0.2;
     });
     
-    // Update group positions state if changed
-    // Note: We avoid calling setGroupPositions directly in render loop to avoid resizing loops
-    // Instead we rely on the parent to update this when needed or via useEffect
-    if (JSON.stringify(newGroupPositions) !== JSON.stringify(groupPositions)) {
-      setTimeout(() => setGroupPositions(newGroupPositions), 0);
-    }
+
     
     return { items, headers };
   }, [photos, galleryWidth, thumbnailHeight, gap, wallDistance, wallCurvature, depthCache]);

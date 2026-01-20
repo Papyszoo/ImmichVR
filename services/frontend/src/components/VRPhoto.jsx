@@ -250,7 +250,7 @@ function VRPhoto({
     } else if (photo.id) {
         // OPTIMIZATION: Use direct URL to enable browser caching
         // The backend proxy handles this route
-        const url = `/api/immich/assets/${photo.id}/thumbnail`;
+        const url = `/api/immich/assets/${photo.id}/thumbnail?size=thumbnail`;
         setImageUrl(url);
         // No cleanup needed for string URLs
     }

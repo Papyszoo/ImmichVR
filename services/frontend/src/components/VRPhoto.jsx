@@ -4,6 +4,7 @@ import { useTexture } from '@react-three/drei';
 import { useThree, extend, useFrame } from '@react-three/fiber';
 import { useSpring } from '@react-spring/three';
 import { ParallaxDepthMaterial, SimpleParallaxMaterial } from '../shaders/ParallaxDepthMaterial';
+import ErrorBoundary from './ErrorBoundary';
 
 // Extend Three.js with our custom materials
 extend({ ParallaxDepthMaterial, SimpleParallaxMaterial });
@@ -178,6 +179,20 @@ function PlaceholderMesh({ hovered, width = 1.2, height = 0.9 }) {
   );
 }
 
+
+
+/**
+ * ErrorMesh - Shows when image failed to load
+ */
+function ErrorMesh({ width = 1.2, height = 0.9 }) {
+  return (
+    <mesh>
+      <planeGeometry args={[width, height]} />
+      <meshStandardMaterial color="#500000" /> {/* Dark red for error */}
+    </mesh>
+  );
+}
+
 /**
  * VRPhoto - Individual thumbnail with parallax depth effect in VR space
  * 
@@ -325,30 +340,32 @@ function VRPhoto({
       }}
     >
       {imageUrl ? (
-        <Suspense fallback={<PlaceholderMesh hovered={hovered} width={initialDimensions.width} height={initialDimensions.height} />}>
-          {shouldUseParallax ? (
-            <ParallaxPhotoMesh
-              imageUrl={imageUrl}
-              depthUrl={depthUrl}
-              hovered={hovered}
-              onClick={handleClick}
-              depthScale={depthScale}
-              targetWidth={initialDimensions.width}
-              targetHeight={initialDimensions.height}
-              useSimpleParallax={useSimpleParallax}
-              opacity={opacity}
-            />
-          ) : (
-            <FallbackMesh
-              imageUrl={imageUrl}
-              hovered={hovered}
-              onClick={handleClick}
-              targetWidth={initialDimensions.width}
-              targetHeight={initialDimensions.height}
-              opacity={opacity}
-            />
-          )}
-        </Suspense>
+        <ErrorBoundary fallback={<ErrorMesh width={initialDimensions.width} height={initialDimensions.height} />}>
+          <Suspense fallback={<PlaceholderMesh hovered={hovered} width={initialDimensions.width} height={initialDimensions.height} />}>
+            {shouldUseParallax ? (
+              <ParallaxPhotoMesh
+                imageUrl={imageUrl}
+                depthUrl={depthUrl}
+                hovered={hovered}
+                onClick={handleClick}
+                depthScale={depthScale}
+                targetWidth={initialDimensions.width}
+                targetHeight={initialDimensions.height}
+                useSimpleParallax={useSimpleParallax}
+                opacity={opacity}
+              />
+            ) : (
+              <FallbackMesh
+                imageUrl={imageUrl}
+                hovered={hovered}
+                onClick={handleClick}
+                targetWidth={initialDimensions.width}
+                targetHeight={initialDimensions.height}
+                opacity={opacity}
+              />
+            )}
+          </Suspense>
+        </ErrorBoundary>
       ) : (
         <PlaceholderMesh hovered={hovered} width={initialDimensions.width} height={initialDimensions.height} />
       )}

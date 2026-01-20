@@ -104,9 +104,9 @@ function ViewerItem({ photo, index, selectedIndex, onSelect }) {
 }
 
 // --- SCROLL ANCHORING COMPONENT (Must be inside Canvas) ---
-function ScrollAnchoring({ virtualMap, visibleBuckets, scrollY, setScrollY }) {
+function ScrollAnchoring({ virtualMap, visibleBuckets, scrollY, setScrollY, scrollAnchorRef }) {
   const prevVirtualMapRef = useRef(null);
-  const scrollAnchorRef = useRef({ id: null, offset: 0 });
+  // Ref comes from parent now to resolve race conditions on Jump
 
   useLayoutEffect(() => {
      if (!prevVirtualMapRef.current || !scrollAnchorRef.current.id) {
@@ -301,6 +301,7 @@ function VRThumbnailGallery({
   const [depthCache, setDepthCache] = useState({});
 
   const scrollRef = useRef(null);
+  const scrollAnchorRef = useRef({ id: null, offset: 0 }); // Shared anchor state
   
   // Viewer State
   const [selectedPhotoId, setSelectedPhotoId] = useState(initialSelectedId);
@@ -800,7 +801,10 @@ function VRThumbnailGallery({
     // Find first bucket of this year
     const item = virtualMap.items.find(i => i.id.startsWith(year.toString()));
     if (item) {
-       setScrollY(item.y + 1.6); 
+       const targetY = item.y + 1.6;
+       setScrollY(targetY); 
+       // FORCE ANCHOR to prevent jump if layout recalculates
+       scrollAnchorRef.current = { id: item.id, offset: 1.6 };
     } else {
         // Fallback or load logic if not in timeline (shouldn't implement if timeline is full)
         console.warn(`Year ${year} not in timeline`);
@@ -1006,6 +1010,7 @@ function VRThumbnailGallery({
              visibleBuckets={visibleBuckets}
              scrollY={scrollY}
              setScrollY={setScrollY}
+             scrollAnchorRef={scrollAnchorRef}
           />
 
           {/* UIKit Settings Panel (renders in 3D space) */}

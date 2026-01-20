@@ -246,15 +246,19 @@ router.get('/models/ai', async (req, res) => {
  * POST /api/settings/models/:key/load
  * Load a model on AI service (downloads if not cached) and update database
  */
+
 router.post('/models/:key/load', async (req, res) => {
   const { key } = req.params;
+  const { device } = req.body; // Extract device preference
   
   try {
     const { modelManager } = require('../services');
     
     // Use ModelManager to handle loading and timeouts
     // Since this is a manual user action ("Activate"), use 'manual' trigger (10m timeout)
-    await modelManager.ensureModelLoaded(key, 'manual');
+    await modelManager.ensureModelLoaded(key, 'manual', { device }); // Pass device preference
+    // Note: ensureModelLoaded calls apiGateway.loadModel(key). 
+    // I need to update those to pass `device` too eventually.
     
     res.json({
       success: true,
@@ -265,6 +269,30 @@ router.post('/models/:key/load', async (req, res) => {
   } catch (error) {
     console.error('Error loading model:', error);
     res.status(500).json({ error: 'Failed to load model', message: error.message });
+  }
+});
+
+/**
+ * POST /api/settings/models/:key/unload
+ * Unload a model
+ */
+router.post('/models/:key/unload', async (req, res) => {
+  const { key } = req.params;
+  
+  try {
+    const { modelManager } = require('../services');
+    
+    // Force unload specific model
+    await modelManager.unloadModel(key);
+    
+    res.json({
+      success: true,
+      message: `Model '${key}' unloaded successfully`
+    });
+    
+  } catch (error) {
+    console.error('Error unloading model:', error);
+    res.status(500).json({ error: 'Failed to unload model', message: error.message });
   }
 });
 

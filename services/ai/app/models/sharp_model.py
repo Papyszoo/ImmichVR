@@ -86,10 +86,40 @@ class SharpModel:
             if self.checkpoint_path.exists(): self.checkpoint_path.unlink()
             raise RuntimeError(f"Download failed: {e}")
 
-    def load_model(self):
+    def load_model(self, device_type: str = 'auto'):
         """Load the model into memory."""
         self.last_used = time.time()
-        if self._model is not None: return
+        
+        # Determine device first
+        # Default to CPU if unassigned, but check availability
+        target_device = 'cpu'
+        
+        if device_type == 'cpu':
+            target_device = 'cpu'
+            logger.info("[SharpModel] Device set to CPU (Requested)")
+        else:
+             # auto or gpu
+            if torch.cuda.is_available():
+                target_device = 'cuda'
+                logger.info("[SharpModel] Using CUDA GPU")
+            elif torch.backends.mps.is_available():
+                target_device = 'mps'
+                logger.info("[SharpModel] Using Apple MPS")
+            else:
+                if device_type == 'gpu':
+                    logger.warning("[SharpModel] GPU requested but unavailable. Falling back to CPU in Auto mode.")
+                target_device = 'cpu'
+        
+        # Check if we need to reload due to device change
+        if self._model is not None:
+             if self.device != target_device:
+                 logger.info(f"[SharpModel] Model loaded on {self.device}, requesting {target_device}. Reloading.")
+                 self.unload_model()
+             else:
+                 logger.info(f"[SharpModel] Model already loaded on {target_device}")
+                 return
+
+        self.device = target_device
 
         if not SHARP_AVAILABLE:
             raise ImportError(f"ml-sharp library not found or incomplete. Error: {SHARP_IMPORT_ERROR}")
@@ -104,7 +134,9 @@ class SharpModel:
             model = create_predictor(params)
             
             # 2. Load weights
-            state_dict = torch.load(self.checkpoint_path, map_location=self.device)
+            # 2. Load weights
+            # Optimization: Load to CPU first to avoid double-allocation on GPU during load
+            state_dict = torch.load(self.checkpoint_path, map_location="cpu")
             model.load_state_dict(state_dict)
             model.to(self.device)
             model.eval()
@@ -122,7 +154,22 @@ class SharpModel:
             logger.info("[SharpModel] Unloading model...")
             del self._model
             self._model = None
+            
+            # Robust cleanup
             gc.collect()
+            gc.collect()
+            
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.ipc_collect()
+                logger.info("[SharpModel] Cleared CUDA cache")
+
+            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                try:
+                    torch.mps.empty_cache()
+                    logger.info("[SharpModel] Cleared MPS cache")
+                except:
+                    pass
 
     def _predict_gaussians(self, image: np.ndarray, f_px: float):
         """
@@ -196,6 +243,8 @@ class SharpModel:
             self.load_model()
             
         logger.info(f"[SharpModel] Processing {input_image_path}...")
+        logger.info(f"[SharpModel] Debug: Using existing model instance {id(self._model)} on device {self.device}")
+        
         try:
             # 1. Load Image using library utility (handles exif rotation, etc)
             # Returns: image (H,W,3 uint8), metadata, focal_length_px
@@ -222,6 +271,18 @@ class SharpModel:
             
         except Exception as e:
             logger.error(f"[SharpModel] Prediction failed: {e}")
+            
+            # Emergency cleanup to free VRAM from activations
+            # This is critical if we hit OOM, otherwise tensors stay referenced by traceback
+            if 'image_pt' in locals(): del image_pt
+            if 'image_resized_pt' in locals(): del image_resized_pt
+            if 'gaussians' in locals(): del gaussians
+            
+            import gc
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
             import traceback
             logger.error(traceback.format_exc())
             raise RuntimeError(f"Splat generation failed: {e}")

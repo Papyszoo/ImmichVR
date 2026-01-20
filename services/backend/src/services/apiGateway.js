@@ -184,18 +184,25 @@ class APIGateway {
   /**
    * Unload the current model from memory
    */
-  async unloadModel() {
+  /**
+   * Unload the current model from memory
+   * @param {string} modelKey - The model key to unload
+   */
+  async unloadModel(modelKey) {
+    if (!modelKey) {
+        throw new Error("unloadModel requires a modelKey");
+    }
     try {
-      const response = await this.aiClient.post('/api/models/unload');
+      const response = await this.aiClient.post(`/api/models/${modelKey}/unload`);
       if (response.status !== 200) {
         throw new Error(`AI service returned status ${response.status}`);
       }
       return response.data;
     } catch (error) {
-      // If endpoint doesn't exist yet on AI service, we might get 404, which is expected during transition
       if (error.response && error.response.status === 404) {
-        console.warn('AI service does not support unload yet (404)');
-        return { success: false, message: 'Not implemented on AI service' };
+         // Fallback if specific unload endpoint missing? No, we just added it.
+         console.warn(`AI service returned 404 for unload ${modelKey}`);
+         return { success: false, message: 'Unload endpoint not found' };
       }
       throw new Error(`Failed to unload model: ${error.message}`);
     }
@@ -236,10 +243,12 @@ class APIGateway {
 
   /**
    * Load a specific model
+   * @param {string} modelKey
+   * @param {Object} options - { device: 'auto'|'cpu'|'gpu' }
    */
-  async loadModel(modelKey) {
+  async loadModel(modelKey, options = {}) {
      try {
-      const response = await this.aiClient.post(`/api/models/${modelKey}/load`);
+      const response = await this.aiClient.post(`/api/models/${modelKey}/load`, options);
       if (response.status !== 200) {
         throw new Error(`AI service returned status ${response.status}`);
       }

@@ -193,11 +193,23 @@ export const getAIModels = async () => {
 /**
  * Load/switch to a specific model on AI service (via backend proxy)
  * @param {string} modelKey - Model to load (small, base, large)
+ * @param {Object} options - Options { device: 'auto' | 'cpu' | 'gpu' }
  */
-export const loadModel = async (modelKey) => {
-  const response = await api.post(`/settings/models/${modelKey}/load`, {}, {
+export const loadModel = async (modelKey, options = {}) => {
+  const response = await api.post(`/settings/models/${modelKey}/load`, {
+    device: options.device || 'auto'
+  }, {
     timeout: 300000, // 5 minutes for model download
   });
+  return response.data;
+};
+
+/**
+ * Unload a specific model
+ * @param {string} modelKey - Model key
+ */
+export const unloadModel = async (modelKey) => {
+  const response = await api.post(`/settings/models/${modelKey}/unload`);
   return response.data;
 };
 

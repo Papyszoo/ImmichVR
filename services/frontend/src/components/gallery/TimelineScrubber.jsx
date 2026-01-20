@@ -72,7 +72,7 @@ function TimelineScrubber({ onScrollToYear, onScroll, groupPositions = {}, scrol
         }
 
         return {
-            label: data.year.toString(),
+            label: data.label,
             visualY: visualY,
             realY: data.y,
             showLabel

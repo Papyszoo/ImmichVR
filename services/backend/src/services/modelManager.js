@@ -83,8 +83,9 @@ class ModelManager {
    * Ensure a specific model is loaded
    * @param {string} modelKey - Key of the model to load
    * @param {string} trigger - 'auto' or 'manual'
+   * @param {Object} options - { device: 'auto'|'cpu'|'gpu' }
    */
-  async ensureModelLoaded(modelKey, trigger = 'auto') {
+  async ensureModelLoaded(modelKey, trigger = 'auto', options = {}) {
     // 1. Validate Model & Check Status
     const modelResult = await this.pool.query(
       'SELECT status FROM ai_models WHERE model_key = $1',
@@ -103,16 +104,17 @@ class ModelManager {
     }
 
     // 2. Check if already loaded
-    if (this.currentModel === modelKey) {
+    // If specific device requested, we must pass through to AI service to handle potential switch
+    if (this.currentModel === modelKey && !options?.device) {
       // Just register activity to extend timeout
       await this.registerActivity(trigger);
       return;
     }
 
     // 3. Load via API Gateway
-    console.log(`[ModelManager] Loading model ${modelKey} (Trigger: ${trigger})`);
+    console.log(`[ModelManager] Loading model ${modelKey} (Trigger: ${trigger}, Device: ${options?.device || 'default'})`);
     try {
-      await this.apiGateway.loadModel(modelKey);
+      await this.apiGateway.loadModel(modelKey, options);
       
       this.currentModel = modelKey;
       this.loadedAt = Date.now();
@@ -147,20 +149,32 @@ class ModelManager {
   }
 
   /**
-   * Internal: Unload the current model
+   * Internal/Public: Unload the current model
+   * @param {string} specificKey - Optional key to ensure we only unload if this is the active model
    */
-  async unloadModel() {
-    if (!this.currentModel) return;
+  async unloadModel(specificKey = null) {
+    // If specific key provided, trust it and pass to gateway regardless of local state
+    // This fixes issues where Backend restarts (currentModel=null) but AI Service has model loaded (Zombie State)
+    const target = specificKey || this.currentModel;
+    
+    if (!target) {
+        // Nothing to unload
+        return;
+    }
 
-    console.log(`[ModelManager] Timeout reached. Unloading model ${this.currentModel}`);
+    console.log(`[ModelManager] Unloading model ${target}`);
     try {
-      await this.apiGateway.unloadModel();
+      // We pass the key to the AI service just to be safe/explicit, though AI service might just unload whatever is there.
+      await this.apiGateway.unloadModel(target);
     } catch (error) {
       console.error('[ModelManager] Failed to unload model:', error);
     } finally {
-      this.currentModel = null;
-      this.loadTrigger = null;
-      this.clearTimeout();
+      // Only clear local state if it matched
+      if (this.currentModel === target) {
+          this.currentModel = null;
+          this.loadTrigger = null;
+          this.clearTimeout();
+      }
     }
   }
 

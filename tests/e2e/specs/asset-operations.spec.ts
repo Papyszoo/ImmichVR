@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 // Use baseURL from playwright.config.ts
-const BASE_URL = process.env.BASE_URL || 'https://localhost:21371';
+const BASE_URL = process.env.BASE_URL || 'https://127.0.0.1:21371';
 
 
 test.describe('Asset Operations', () => {
@@ -26,7 +26,7 @@ test.describe('Asset Operations', () => {
     }
 
     const response = await request.get(
-      `https://localhost:21371/api/assets/${testAssetId}/files`,
+      `${BASE_URL}/api/assets/${testAssetId}/files`,
       { ignoreHTTPSErrors: true }
     );
     
@@ -57,7 +57,7 @@ test.describe('Asset Operations', () => {
     }
 
     const response = await request.post(
-      `https://localhost:21371/api/assets/${testAssetId}/generate`,
+      `${BASE_URL}/api/assets/${testAssetId}/generate`,
       {
         ignoreHTTPSErrors: true,
         data: {
@@ -88,7 +88,7 @@ test.describe('Asset Operations', () => {
     }
 
     const response = await request.get(
-      `https://localhost:21371/api/assets/${testAssetId}/files/${testFileId}/download`,
+      `${BASE_URL}/api/assets/${testAssetId}/files/${testFileId}/download`,
       { ignoreHTTPSErrors: true }
     );
     
@@ -115,7 +115,7 @@ test.describe('Asset Operations', () => {
 
     // Generate depth
     await request.post(
-      `https://localhost:21371/api/assets/${testAssetId}/generate`,
+      `${BASE_URL}/api/assets/${testAssetId}/generate`,
       {
         ignoreHTTPSErrors: true,
         data: {
@@ -127,7 +127,7 @@ test.describe('Asset Operations', () => {
 
     // Get files to find the ID
     const filesResponse = await request.get(
-      `https://localhost:21371/api/assets/${testAssetId}/files`,
+      `${BASE_URL}/api/assets/${testAssetId}/files`,
       { ignoreHTTPSErrors: true }
     );
     const filesData = await filesResponse.json();
@@ -140,7 +140,7 @@ test.describe('Asset Operations', () => {
     
     // Delete the file
     const deleteResponse = await request.delete(
-      `https://localhost:21371/api/assets/${testAssetId}/files/${fileToDelete.id}`,
+      `${BASE_URL}/api/assets/${testAssetId}/files/${fileToDelete.id}`,
       { ignoreHTTPSErrors: true }
     );
     
@@ -181,7 +181,7 @@ test.describe('Asset Operations', () => {
     }
 
     const response = await request.post(
-      `https://localhost:21371/api/assets/${testAssetId}/convert`,
+      `${BASE_URL}/api/assets/${testAssetId}/convert`,
       {
         ignoreHTTPSErrors: true,
         data: {

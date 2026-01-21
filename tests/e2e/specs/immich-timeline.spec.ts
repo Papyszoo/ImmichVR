@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 // Use baseURL from playwright.config.ts
-const BASE_URL = process.env.BASE_URL || 'https://localhost:21371';
+const BASE_URL = process.env.BASE_URL || 'https://127.0.0.1:21371';
 
 
 test.describe('Immich Timeline API', () => {
@@ -37,7 +37,7 @@ test.describe('Immich Timeline API', () => {
     
     // Fetch assets for that bucket
     const response = await request.get(
-      `https://localhost:21371/api/immich/timeline/${encodeURIComponent(firstBucket)}`,
+      `${BASE_URL}/api/immich/timeline/${encodeURIComponent(firstBucket)}`,
       { ignoreHTTPSErrors: true }
     );
     

@@ -116,7 +116,7 @@ test.describe('VR Gallery with Mock Immich API', () => {
 
   test('backend can connect to mock Immich API', async ({ request }) => {
     // Test the backend's Immich connection endpoint
-    const response = await request.get('https://localhost:21371/api/immich/test', {
+    const response = await request.get('https://127.0.0.1:21371/api/immich/test', {
       ignoreHTTPSErrors: true
     });
     
@@ -128,7 +128,7 @@ test.describe('VR Gallery with Mock Immich API', () => {
   });
 
   test('backend can fetch photos from mock API', async ({ request }) => {
-    const response = await request.get('https://localhost:21371/api/immich/photos?size=20', {
+    const response = await request.get('https://127.0.0.1:21371/api/immich/photos?size=20', {
       ignoreHTTPSErrors: true
     });
     
@@ -152,7 +152,7 @@ test.describe('VR Gallery with Mock Immich API', () => {
 
   test('backend can fetch specific photo info', async ({ request }) => {
     // First get the list of photos
-    const photosResponse = await request.get('https://localhost:21371/api/immich/photos?size=1', {
+    const photosResponse = await request.get('https://127.0.0.1:21371/api/immich/photos?size=1', {
       ignoreHTTPSErrors: true
     });
     const photosData = await photosResponse.json();
@@ -161,7 +161,7 @@ test.describe('VR Gallery with Mock Immich API', () => {
     const photoId = photosData.data[0].id;
     
     // Now fetch specific photo info
-    const photoResponse = await request.get(`https://localhost:21371/api/immich/assets/${photoId}`, {
+    const photoResponse = await request.get(`https://127.0.0.1:21371/api/immich/assets/${photoId}`, {
       ignoreHTTPSErrors: true
     });
     
@@ -175,7 +175,7 @@ test.describe('VR Gallery with Mock Immich API', () => {
 
   test('backend can fetch photo thumbnail', async ({ request }) => {
     // First get a photo ID
-    const photosResponse = await request.get('https://localhost:21371/api/immich/photos?size=1', {
+    const photosResponse = await request.get('https://127.0.0.1:21371/api/immich/photos?size=1', {
       ignoreHTTPSErrors: true
     });
     const photosData = await photosResponse.json();
@@ -183,7 +183,7 @@ test.describe('VR Gallery with Mock Immich API', () => {
     
     // Fetch thumbnail
     const thumbnailResponse = await request.get(
-      `https://localhost:21371/api/immich/assets/${photoId}/thumbnail`,
+      `https://127.0.0.1:21371/api/immich/assets/${photoId}/thumbnail`,
       { ignoreHTTPSErrors: true }
     );
     

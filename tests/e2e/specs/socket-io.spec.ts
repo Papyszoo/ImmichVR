@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { io, Socket } from 'socket.io-client';
 
 // Use baseURL from playwright.config.ts
-const BASE_URL = process.env.BASE_URL || 'https://localhost:21371';
+const BASE_URL = process.env.BASE_URL || 'https://127.0.0.1:21371';
 
 test.describe('Socket.IO Real-time Model Management', () => {
   let socket: Socket;

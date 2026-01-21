@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 // Use baseURL from playwright.config.ts
-const BASE_URL = process.env.BASE_URL || 'https://localhost:21371';
+const BASE_URL = process.env.BASE_URL || 'https://127.0.0.1:21371';
 
 test.describe('Settings and Model Management', () => {
   test('should fetch current settings', async ({ request }) => {
@@ -127,7 +127,7 @@ test.describe('Settings and Model Management', () => {
     
     // Load the model
     const response = await request.post(
-      `https://localhost:21371/api/settings/models/${model.key}/load`,
+      `${BASE_URL}/api/settings/models/${model.key}/load`,
       { ignoreHTTPSErrors: true }
     );
     
@@ -152,7 +152,7 @@ test.describe('Settings and Model Management', () => {
     
     // Unload the model
     const response = await request.post(
-      `https://localhost:21371/api/settings/models/${loadedModel.key}/unload`,
+      `${BASE_URL}/api/settings/models/${loadedModel.key}/unload`,
       { ignoreHTTPSErrors: true }
     );
     

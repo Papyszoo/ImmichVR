@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 // Use baseURL from playwright.config.ts
-const BASE_URL = process.env.BASE_URL || 'https://localhost:21371';
+const BASE_URL = process.env.BASE_URL || 'https://127.0.0.1:21371';
 
 
 test.describe('Queue Management', () => {

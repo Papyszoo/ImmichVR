@@ -86,10 +86,10 @@ function App() {
   };
 
   const loadMorePhotos = useCallback(() => {
-    if (!loadingMore && hasMore && filterMode === 'splats') {
+    if (!loading && !loadingMore && hasMore && filterMode === 'splats') {
       loadPhotos(currentPage + 1, false);
     }
-  }, [loadingMore, hasMore, currentPage, filterMode]);
+  }, [loading, loadingMore, hasMore, currentPage, filterMode]);
 
 
   useEffect(() => {

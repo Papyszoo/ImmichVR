@@ -190,15 +190,16 @@ class SocketManager {
     } else {
          const insertResult = await pool.query(
             `INSERT INTO media_items 
-             (original_filename, media_type, immich_asset_id, source_type, file_path, file_size, mime_type)
-             VALUES ($1, 'photo', $2, 'immich', $3, $4, $5)
+             (original_filename, media_type, immich_asset_id, source_type, file_path, file_size, mime_type, captured_at)
+             VALUES ($1, 'photo', $2, 'immich', $3, $4, $5, $6)
              RETURNING id`,
             [
               assetInfo.originalFileName || `immich_${assetId}`, 
               assetId,
               `immich://${assetId}`,
               assetInfo.exifInfo?.fileSizeInByte || 0,
-              assetInfo.originalMimeType || 'application/octet-stream'
+              assetInfo.originalMimeType || 'application/octet-stream',
+              assetInfo.exifInfo?.dateTimeOriginal || assetInfo.fileCreatedAt || new Date()
             ]
           );
           mediaItemId = insertResult.rows[0].id;
@@ -270,7 +271,17 @@ class SocketManager {
        if (mediaItemResult.rows.length > 0) mediaItemId = mediaItemResult.rows[0].id;
        else {
            // Create media item stub... (Simplified)
-           const newItem = await pool.query(`INSERT INTO media_items (immich_asset_id, media_type, source_type) VALUES ($1, 'photo', 'immich') RETURNING id`, [assetId]);
+           const newItem = await pool.query(
+                `INSERT INTO media_items (immich_asset_id, media_type, source_type, captured_at, original_filename, file_path, file_size, mime_type) 
+                 VALUES ($1, 'photo', 'immich', $2, $3, $4, 0, 'application/octet-stream') 
+                 RETURNING id`, 
+                [
+                    assetId, 
+                    assetInfo.exifInfo?.dateTimeOriginal || assetInfo.fileCreatedAt || new Date(),
+                    assetInfo.originalFileName || `immich_${assetId}`,
+                    `immich://${assetId}`
+                ]
+            );
            mediaItemId = newItem.rows[0].id;
        }
        

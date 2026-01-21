@@ -940,7 +940,7 @@ function VRThumbnailGallery({
       if (!propPhotos || !onLoadMore || !hasMore || loadingMore) return;
       
       // Simple check: if scrollY is near totalHeight
-      const threshold = 2.0; // meters
+      const threshold = 6.0; // meters (increased from 2.0 to ensure early trigger)
       if (totalHeight - scrollY < threshold) {
           onLoadMore();
       }

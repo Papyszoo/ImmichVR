@@ -286,8 +286,8 @@ router.get('/processed', async (req, res) => {
           FROM generated_assets_3d ga
           JOIN media_items m ON ga.media_item_id = m.id
           WHERE ga.asset_type IN ('depth', 'depth_thumbnail', 'splat', 'video_depth_frames', 'video_sbs')
-          GROUP BY m.immich_asset_id
-          ORDER BY MAX(ga.generated_at) DESC
+          GROUP BY m.immich_asset_id, m.captured_at, m.uploaded_at, m.id
+          ORDER BY m.captured_at DESC, m.id DESC
           LIMIT $1 OFFSET $2
         `;
         queryParams = [size, offset];
@@ -298,8 +298,8 @@ router.get('/processed', async (req, res) => {
           FROM generated_assets_3d ga
           JOIN media_items m ON ga.media_item_id = m.id
           WHERE ga.asset_type = $1
-          GROUP BY m.immich_asset_id
-          ORDER BY MAX(ga.generated_at) DESC
+          GROUP BY m.immich_asset_id, m.captured_at, m.uploaded_at, m.id
+          ORDER BY m.captured_at DESC, m.id DESC
           LIMIT $2 OFFSET $3
         `;
         queryParams = [assetType, size, offset];

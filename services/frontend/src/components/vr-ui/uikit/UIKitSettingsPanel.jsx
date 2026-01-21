@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Root, Container, Text } from '@react-three/uikit';
-import { getSettings, updateSettings, getModels, getAIModels, loadModel, markModelDownloaded, downloadModel } from '../../../services/api';
+import { getSettings, updateSettings, getModels, getAIModels, loadModel, unloadModel, markModelDownloaded, downloadModel } from '../../../services/api';
 
 const COLORS = {
     bg: '#000000', // Pure Black backing
@@ -149,6 +149,7 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
   const [models, setModels] = useState([]);
   const [loadingModel, setLoadingModel] = useState(null);
   const [currentLoadedModel, setCurrentLoadedModel] = useState(null);
+  const [activeDevice, setActiveDevice] = useState(null); // 'cpu', 'gpu'
 
   const fetchModels = async () => {
     try {
@@ -165,6 +166,11 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
       }
       
       setCurrentLoadedModel(aiModelsData.current_model);
+      if (aiModelsData.current_device) {
+          // Normalize backend device to 'cpu' or 'gpu' (or 'auto' if unknown)
+          // Backend sends 'cpu' or 'gpu'
+          setActiveDevice(aiModelsData.current_device); 
+      }
       
       // 3. Merge: Use DB models as base, overlay runtime info
       const mergedModels = dbModels.map(dbModel => {
@@ -206,7 +212,7 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
         actions: {
           setActiveTab,
           downloadModel: handleDownloadModel,
-          activateModel: handleActivateModel,
+          toggleModel: handleToggleModel,
           updateSetting,
         }
       };
@@ -238,15 +244,30 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
 
   // Get installed models for dropdown filtering
   const installedModels = models.filter(m => m.status === 'downloaded');
-  
-  // Handle model activation (load into memory)
-  const handleActivateModel = async (modelKey) => {
+    // Handle model activation (load into memory) with specific device
+  const handleToggleModel = async (modelKey, device) => {
+    // If currently loading anything, block
+    if (loadingModel) return;
+
+    // Check current status
+    const model = models.find(m => m.key === modelKey);
+    const isLoaded = model?.is_loaded;
+    const currentDevice = activeDevice; // global state updated from fetchModels
+
     setLoadingModel(modelKey);
     try {
-      await loadModel(modelKey);
+        if (isLoaded && currentDevice === device) {
+            // Unload if clicking the active button
+            await unloadModel(modelKey);
+        } else {
+            // Load (or switch device)
+            // device: 'cpu' or 'gpu'
+            await loadModel(modelKey, { device });
+        }
+        
       await fetchModels();
     } catch (err) {
-      console.error('Failed to activate model:', err);
+      console.error('Failed to toggle model:', err);
     } finally {
       setLoadingModel(null);
     }
@@ -446,10 +467,10 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
                         </>
                     )}
 
-                    {activeTab === 'models' && (
+                  {activeTab === 'models' && (
                         <>
                           {/* Default Model Selection - Only installed models */}
-                          <Container flexDirection="column" gap={8} width="100%">
+                          <Container flexDirection="column" gap={8} width="100%" flexShrink={0}>
                             <Text fontSize={20} color="#E5E7EB">Default Depth Model</Text>
                             <Container flexDirection="row" gap={8}>
                               {installedModels.length > 0 ? (
@@ -478,13 +499,18 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
                           </Container>
 
                           {/* Model Cards - All models */}
-                          <Container flexDirection="column" gap={12} width="100%">
+                          <Container flexDirection="column" gap={12} width="100%" flexShrink={0}>
                             <Text fontSize={20} color="#E5E7EB">Available Models</Text>
                             
                               {models.map((model) => {
                                 const isInstalled = model.status === 'downloaded';
                                 const isLoading = loadingModel === model.key;
+                                const isLoaded = model.is_loaded;
                                 
+                                // activeDevice is 'gpu' or 'cpu' (or null)
+                                const isGpuActive = isLoaded && activeDevice === 'gpu';
+                                const isCpuActive = isLoaded && activeDevice === 'cpu';
+
                                 return (
                                   <Container
                                     key={model.key}
@@ -494,6 +520,7 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
                                     flexDirection="row"
                                     justifyContent="space-between"
                                     alignItems="center"
+                                    flexShrink={0}
                                   >
                                     <Container flexDirection="column" gap={4}>
                                       <Text color="#FFFFFF" fontSize={18}>{model.name} ({model.params})</Text>
@@ -501,34 +528,30 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
                                     </Container>
                                   
                                   {isInstalled ? (
-                                    <Container flexDirection="row" gap={8}>
-                                      {model?.is_loaded ? (
-                                        <Container
-                                          backgroundColor={COLORS.primary}
-                                          paddingX={12}
-                                          paddingY={6}
-                                          borderRadius={6}
-                                        >
-                                          <Text color="#FFFFFF" fontSize={14}>Active</Text>
-                                        </Container>
-                                      ) : (
-                                        <UiButton 
-                                            text={isLoading ? "..." : "Activate"} 
-                                            width={90} 
+                                    <Container flexDirection="row" gap={8} alignItems="center">
+                                       <Text fontSize={14} color="#9CA3AF" marginRight={4}>Load On:</Text>
+                                       
+                                       {/* GPU Button */}
+                                       <UiButton 
+                                            text="GPU" 
+                                            width={70} 
                                             height={32} 
                                             disabled={isLoading}
-                                            onClick={() => handleActivateModel(model.key)}
-                                            backgroundColor={COLORS.surfaceHighlight}
+                                            backgroundColor={isGpuActive ? COLORS.primary : COLORS.surfaceHighlight}
+                                            hover={{ backgroundColor: isGpuActive ? COLORS.primaryHover : "#4B5563" }}
+                                            onClick={() => handleToggleModel(model.key, 'gpu')}
                                         />
-                                      )}
-                                      <Container
-                                        backgroundColor={COLORS.success}
-                                        paddingX={12}
-                                        paddingY={6}
-                                        borderRadius={6}
-                                      >
-                                        <Text color="#FFFFFF" fontSize={14}>Installed</Text>
-                                      </Container>
+
+                                        {/* CPU Button */}
+                                        <UiButton 
+                                            text="CPU" 
+                                            width={70} 
+                                            height={32} 
+                                            disabled={isLoading}
+                                            backgroundColor={isCpuActive ? COLORS.primary : COLORS.surfaceHighlight}
+                                            hover={{ backgroundColor: isCpuActive ? COLORS.primaryHover : "#4B5563" }}
+                                            onClick={() => handleToggleModel(model.key, 'cpu')}
+                                        />
                                     </Container>
                                   ) : (
                                     <UiButton 

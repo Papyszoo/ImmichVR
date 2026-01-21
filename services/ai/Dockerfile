@@ -29,6 +29,8 @@ RUN pip install --no-cache-dir git+https://github.com/apple/ml-sharp.git
 # Copy application code
 COPY . .
 
+ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
 # Expose port
 EXPOSE 5000
 

@@ -229,4 +229,120 @@ router.post('/search', async (req, res) => {
   }
 });
 
+// Get timeline buckets
+router.get('/timeline', async (req, res) => {
+  try {
+    const buckets = await immichConnector.getTimeBuckets();
+    res.json({
+      status: 'success',
+      data: buckets,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to fetch timeline',
+      message: error.message,
+    });
+  }
+});
+
+// Get assets for a specific timeline bucket
+router.get('/timeline/:bucket', async (req, res) => {
+  try {
+    // Decode the bucket identifier (it might have special chars or time format)
+    const bucket = decodeURIComponent(req.params.bucket);
+    const assets = await immichConnector.getTimelineBucket(bucket);
+    
+    // Filter to only include IMAGE/VIDEO if needed (ImmichConnector might return both)
+    // For now returning all, frontend can filter
+    
+    res.json({
+      status: 'success',
+      count: assets.length,
+      data: assets,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: `Failed to fetch bucket ${req.params.bucket}`,
+      message: error.message,
+    });
+  }
+});
+
+// Get only photos that have generated 3D assets (splats)
+router.get('/processed', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 0;
+    const size = parseInt(req.query.size) || 100;
+    const offset = page * size;
+    const assetType = req.query.type || 'all'; // Default to all 3D types
+    
+    let query;
+    let queryParams;
+
+    if (assetType === 'all') {
+        // Query for ANY 3D asset
+        query = `
+          SELECT m.immich_asset_id
+          FROM generated_assets_3d ga
+          JOIN media_items m ON ga.media_item_id = m.id
+          WHERE ga.asset_type IN ('depth', 'depth_thumbnail', 'splat', 'video_depth_frames', 'video_sbs')
+          GROUP BY m.immich_asset_id
+          ORDER BY MAX(ga.generated_at) DESC
+          LIMIT $1 OFFSET $2
+        `;
+        queryParams = [size, offset];
+    } else {
+        // Specific type query
+        query = `
+          SELECT m.immich_asset_id
+          FROM generated_assets_3d ga
+          JOIN media_items m ON ga.media_item_id = m.id
+          WHERE ga.asset_type = $1
+          GROUP BY m.immich_asset_id
+          ORDER BY MAX(ga.generated_at) DESC
+          LIMIT $2 OFFSET $3
+        `;
+        queryParams = [assetType, size, offset];
+    }
+    
+    const dbResult = await pool.query(query, queryParams);
+    const immichIds = dbResult.rows.map(row => row.immich_asset_id);
+
+    // 2. If no assets found, return empty
+    if (immichIds.length === 0) {
+      return res.json({
+        status: 'success',
+        count: 0,
+        data: []
+      });
+    }
+
+    // 3. Fetch metadata for these assets from Immich
+    // We fetch them in parallel. Since page size is usually small (e.g. 50-100), this is acceptable.
+    const assetPromises = immichIds.map(id => 
+      immichConnector.getAssetInfo(id).catch(err => {
+        console.warn(`Failed to fetch info for processed asset ${id}:`, err.message);
+        return null; 
+      })
+    );
+    
+    const assets = (await Promise.all(assetPromises)).filter(a => a !== null);
+
+    res.json({
+      status: 'success',
+      count: assets.length,
+      page,
+      size,
+      data: assets,
+    });
+
+  } catch (error) {
+    console.error('Failed to fetch processed photos:', error);
+    res.status(500).json({
+      error: 'Failed to fetch processed photos',
+      message: error.message,
+    });
+  }
+});
+
 module.exports = router;

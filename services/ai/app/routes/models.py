@@ -59,9 +59,39 @@ def list_models():
     except Exception as e:
         logger.warning(f"Could not include SHARP model status: {e}")
     
+    # Determine current device type for frontend
+    current_device_type = None
+    if model.is_loaded:
+        if model.device == 0: current_device_type = 'gpu' # Generic GPU (CUDA)
+        elif model.device == 'mps': current_device_type = 'gpu' # Generic GPU (MPS)
+        else: current_device_type = 'cpu'
+    
+    # Check SHARP status
+    try:
+        from ..models.sharp_model import sharp_model
+        sharp_status = sharp_model.get_status()
+        if sharp_status['is_loaded']:
+             # If SHARP is loaded, it overrides or co-exists. 
+             # For UI purposes, if SHARP is active, report its device.
+             s_dev = sharp_status['device']
+             if s_dev == 'cuda' or s_dev == 'mps': current_device_type = 'gpu'
+             elif s_dev == 'cpu': current_device_type = 'cpu'
+             # If s_dev is 'auto', we don't know, but likely resolved in load.
+             
+             # Also update current_model if depth model is not loaded
+             if model.current_model_key is None:
+                 # We don't have a mutable current_model_key variable here easily accessible to override the json response key...
+                 # But the frontend looks at the top-level `current_model`.
+                 pass
+    except:
+        pass
+
     return jsonify({
         "models": models_list,
-        "current_model": model.current_model_key,
+        "current_model": model.current_model_key if model.is_loaded else ("sharp" if (
+            'sharp_model' in locals() and sharp_model.get_status()['is_loaded']
+        ) else None),
+        "current_device": current_device_type,
         "default_model": Config.DEFAULT_MODEL,
     })
 
@@ -91,10 +121,15 @@ def load_model(model_key: str):
     if model_key == "sharp":
         try:
             from ..models.sharp_model import sharp_model
-            sharp_model.load_model() # This is the new method we wrote
+            
+            # Extract optional device parameter (same as below)
+            data = request.get_json() or {}
+            device_type = data.get('device', 'auto')
+            
+            sharp_model.load_model(device_type=device_type) 
             return jsonify({
                 "success": True, 
-                "message": "SHARP model loaded",
+                "message": f"SHARP model loaded on {sharp_model.device}",
                 "current_model": "sharp"
             })
         except Exception as e:
@@ -106,8 +141,13 @@ def load_model(model_key: str):
             "message": f"Model '{model_key}' not found. Available: {list(Config.AVAILABLE_MODELS.keys())}"
         }), 400
     
+    
+    # Extract optional device parameter
+    data = request.get_json() or {}
+    device_type = data.get('device', 'auto')
+    
     try:
-        success = model.switch_model(model_key)
+        success = model.switch_model(model_key, device_type=device_type)
         
         if success:
             return jsonify({
@@ -171,6 +211,7 @@ def download_model(model_key: str):
             "message": str(e)
         }), 500
 
+@models_bp.route('/api/models/<model_key>/unload', methods=['POST'])
 def unload_model(model_key: str):
     """
     Unload a specific model (if it's currently loaded).
@@ -181,6 +222,18 @@ def unload_model(model_key: str):
     Returns:
         JSON with success status
     """
+    # Handler for SHARP model
+    if model_key == "sharp":
+        try:
+            from ..models.sharp_model import sharp_model
+            sharp_model.unload_model()
+            return jsonify({
+                "success": True,
+                "message": "Model 'sharp' unloaded successfully"
+            })
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)}), 500
+
     if model.current_model_key != model_key:
         return jsonify({
             "success": True,

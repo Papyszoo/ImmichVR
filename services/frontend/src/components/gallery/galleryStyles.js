@@ -60,35 +60,7 @@ const styles = {
     backdropFilter: 'blur(5px)',
     transition: 'all 0.2s ease',
   },
-  scrollIndicator: {
-    position: 'absolute',
-    right: '10px',
-    top: '50%',
-    transform: 'translateY(-50%)',
-    width: '4px',
-    height: '60%',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: '2px',
-    zIndex: 90,
-  },
-  scrollThumb: {
-    position: 'absolute',
-    width: '100%',
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
-    borderRadius: '2px',
-    transition: 'top 0.1s linear, height 0.1s linear',
-  },
-  scrollHint: {
-    position: 'absolute',
-    bottom: '30px',
-    left: '50%',
-    transform: 'translateX(-50%)',
-    color: 'rgba(255, 255, 255, 0.5)',
-    fontSize: '14px',
-    zIndex: 90,
-    pointerEvents: 'none',
-    textShadow: '0 1px 2px rgba(0,0,0,0.8)',
-  }
+  /* Scroll styles removed - VR Native now */
 };
 
 export default styles;

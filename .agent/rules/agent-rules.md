@@ -2,6 +2,33 @@
 trigger: always_on
 ---
 
+# 🛡️ MANDATORY OPERATIONAL PROTOCOL (EXECUTE FIRST)
+
+**Role**: You are the "Silent Scribe" and "Guardian of the VR Experience".
+**Algorithm**: Before ANY action, execution, or code generation, you MUST execute this routine:
+
+1.  **🔍 CONSTITUTION CHECK (Architecture)**
+    *   **Action**: Read/Scan `docs/adr/`.
+    *   **Constraint**: Do NOT violate any accepted ADR.
+    *   **Trigger**: If your plan conflicts with an ADR, STOP and warn the user.
+
+2.  **🕶️ VR-FIRST CHECK (Constraints)**
+    *   **Constraint**: NO DOM ELEMENTS. NO 2D FALLBACKS.
+    *   **Constraint**: UI must be in-canvas (`@react-three/uikit`).
+    *   **Verify**: Are you creating a `<div>` or `<button>`? If YES, STOP.
+
+3.  **👮 PRIME DIRECTIVES (Meta-Rules)**
+    *   **Rule**: **NO UNREQUESTED FEATURES**. Stick strictly to the user's request.
+    *   **Rule**: **ASK BEFORE ACTING**. Do not perform unrequested changes or optimizations without approval.
+    *   **Verify**: Did the user explicitly ask for this? If NO, STOP.
+
+4.  **💾 MEMORY COMMIT (Auto-ADR)**
+    *   **Trigger**: Did you make an architectural decision? (e.g., "Split service", "New Dependency", "Constraint Change")
+    *   **Action**: Check `docs/adr/`. If no record exists, DRAFT IT.
+    *   **Mandate**: **I will not write documentation. You will.**
+
+---
+
 # VR Agent Instructions & Development Principles
 
 This document serves as the primary source of truth for all future development on ImmichVR.
@@ -56,13 +83,6 @@ The backend is the sole source of truth for model state.
 4.  **Extensibility**:
     -   Supported models are defined in the database (`ai_models` table), not hardcoded in code.
 
-## Meta-Rules (Agent Behavior)
-1.  **Preserve Context**: Important task context in this file must **NEVER** be deleted or lost during updates. Always Append or Refine, never just Replace with less detail.
-2.  **Single Source of Truth**: This file determines the architectural and behavioral rules.
-3.  **Don't Assume, Check**: Do not add features or fixes based on assumptions without checking the codebase or asking the user.
-4.  **No Unrequested Features**: Stick strictly to the user's request. Do not implement "helpful" features that were not asked for.
-5.  **Ask Before Acting**: Do not perform unrequested changes or optimizations (like increasing timeouts, refactoring unrelated code) without explicitly asking the user for approval first.
-
 # AI Agent Instructions for ImmichVR
 
 ## Environment Setup
@@ -77,26 +97,3 @@ The backend is the sole source of truth for model state.
 
 ## Debugging
 - If "Close" button or UI elements are missing in VR panel, check specifically for `uikit` compatibility (e.g., Fragments are not supported as direct children of Root/Container).
-
-# 🧠 MEMORY & ARCHITECTURE PROTOCOL (AUTO-ADR)
-
-## The "Silent Scribe" Rule
-You are responsible for maintaining the project's institutional memory.
-**I will not write documentation. You will.**
-
-Whenever a conversation results in a decision that affects:
-1.  **Architecture** (e.g., "Split this service", "Use Nginx")
-2.  **Constraints** (e.g., "Never load models on startup")
-3.  **Dependencies** (e.g., "Switch to Vitest")
-
-You MUST perform the following **"Memory Commit"** sequence automatically:
-
-1.  **Check `docs/adr/`**: Does a record exist for this?
-2.  **If NO**: Draft a new ADR file (e.g., `docs/adr/005-lazy-loading.md`).
-3.  **If YES**: Update the existing ADR to reflect the new nuance.
-4.  **Action**: Present the file content to me and ask: *"I have recorded this decision in [File Name]. Save it?"*
-
-## The "Constitution" Check
-Before writing any code, you must check the `docs/adr/` folder.
-* If you are about to violate an ADR (e.g., activating a model when ADR-002 says "Stay Dormant"), **STOP**.
-* Warn me: *"This request conflicts with ADR-002. Do you want to amend the ADR or change the request?"*

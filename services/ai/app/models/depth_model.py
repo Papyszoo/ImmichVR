@@ -49,13 +49,14 @@ class DepthModel:
         self._monitor_thread = threading.Thread(target=monitor_loop, daemon=True)
         self._monitor_thread.start()
 
-    def initialize(self, model_key: str = None):
+    def initialize(self, model_key: str = None, device_type: str = 'auto'):
         """
         Initialize a specific depth model.
         
         Args:
             model_key: Which model to load (small, base, large). 
                       Defaults to Config.DEFAULT_MODEL.
+            device_type: 'auto', 'cpu', or 'gpu'
         
         Returns:
             bool: True if initialization succeeded
@@ -69,13 +70,26 @@ class DepthModel:
             logger.error(f"Unknown model key: {model_key}")
             return False
         
-        # If already loaded, skip
+        # If already loaded with same key AND same device type, maybe skip?
+        # For simplicity, if they forcefully request a device, we might want to reload to be sure.
+        # But if it's strictly 'auto' and we are already loaded, we can likely skip.
         if self._pipeline is not None and self.current_model_key == model_key:
-            logger.info(f"Model {model_key} already loaded")
-            return True
+             # Basic check: if they want CPU and we are on GPU (device 0), reload.
+             # If they want GPU and we are on CPU (device -1), reload.
+             current_device_is_gpu = (self.device != -1 and self.device != "cpu")
+             requested_cpu = (device_type == 'cpu')
+             requested_gpu = (device_type == 'gpu')
+             
+             if requested_cpu and current_device_is_gpu:
+                 logger.info("Reloading to switch to CPU")
+             elif requested_gpu and not current_device_is_gpu:
+                 logger.info("Reloading to switch to GPU")
+             else:
+                 logger.info(f"Model {model_key} already loaded on compatible device")
+                 return True
         
         try:
-            logger.info(f"Initializing Depth Anything V2 model: {model_key}...")
+            logger.info(f"Initializing Depth Anything V2 model: {model_key} [Device: {device_type}]...")
             
             # Unload current model if exists
             if self._pipeline is not None:
@@ -92,8 +106,30 @@ class DepthModel:
                 return True
             
             # Determine device
-            self.device = 0 if torch.cuda.is_available() else -1
-            device_name = "GPU" if self.device == 0 else "CPU"
+            # Default to CPU (-1)
+            target_device = -1 
+            
+            if device_type == 'cpu':
+                target_device = -1
+                logger.info("Forcing usage of CPU")
+            else:
+                # 'auto' or 'gpu'
+                if torch.cuda.is_available():
+                    target_device = 0 # CUDA device 0
+                    logger.info("CUDA GPU is available. Using CUDA.")
+                elif torch.backends.mps.is_available():
+                     target_device = "mps" # Apple Silicon
+                     logger.info("Apple MPS is available. Using MPS.")
+                else:
+                    if device_type == 'gpu':
+                        logger.warning("GPU requested but neither CUDA nor MPS is available. Falling back to CPU.")
+                    target_device = -1
+            
+            self.device = target_device
+            device_name = "CPU"
+            if self.device == 0: device_name = "CUDA GPU"
+            elif self.device == "mps": device_name = "Apple MPS"
+            
             logger.info(f"Using device: {device_name}")
             
             # Get model ID from registry
@@ -108,7 +144,7 @@ class DepthModel:
             )
             
             self.current_model_key = model_key
-            logger.info(f"Model {model_key} initialized successfully")
+            logger.info(f"Model {model_key} initialized successfully on {device_name}")
             return True
             
         except Exception as e:
@@ -162,20 +198,31 @@ class DepthModel:
             self._pipeline = None
             self.current_model_key = None
             
-            # Force garbage collection
+            # Force garbage collection (multiple passes)
+            gc.collect()
             gc.collect()
             
             # Clear CUDA cache if using GPU
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+                torch.cuda.ipc_collect()
                 logger.info("Cleared CUDA cache")
+            
+            # Clear MPS cache if using Apple Silicon
+            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                try:
+                    torch.mps.empty_cache()
+                    logger.info("Cleared MPS cache")
+                except Exception as e:
+                    logger.warning(f"Failed to clear MPS cache: {e}")
 
-    def switch_model(self, model_key: str) -> bool:
+    def switch_model(self, model_key: str, device_type: str = 'auto') -> bool:
         """
-        Switch to a different model variant.
+        Switch to a different model variant or device.
         
         Args:
             model_key: Target model (small, base, large)
+            device_type: 'auto', 'cpu', 'gpu'
             
         Returns:
             bool: True if switch succeeded
@@ -183,12 +230,9 @@ class DepthModel:
         import time
         self.last_used = time.time()
         
-        if model_key == self.current_model_key:
-            logger.info(f"Model {model_key} already active")
-            return True
-        
-        logger.info(f"Switching from {self.current_model_key} to {model_key}")
-        return self.initialize(model_key)
+        # We now check device compatibility inside initialize
+        logger.info(f"Switching to {model_key} (Device: {device_type})")
+        return self.initialize(model_key, device_type)
 
     def predict(self, image, model_key: str = None):
         """
@@ -293,10 +337,14 @@ class DepthModel:
 
     def get_status(self) -> dict:
         """Get current model status."""
+        d_name = "CPU"
+        if self.device == 0: d_name = "CUDA GPU"
+        elif self.device == "mps": d_name = "Apple MPS"
+        
         return {
             "loaded": self.is_loaded,
             "current_model": self.current_model_key,
-            "device": "GPU" if self.device == 0 else "CPU",
+            "device": d_name,
             "available_models": list(Config.AVAILABLE_MODELS.keys()),
             "downloaded_models": self._get_downloaded_models()
         }

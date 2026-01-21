@@ -62,6 +62,35 @@ export const getImmichPhotos = async (page = 0, size = 100) => {
 };
 
 /**
+ * Get Immich photos that have processed 3D assets (Splats)
+ * @param {number} page - Page number
+ * @param {number} size - Page size
+ */
+export const getProcessedPhotos = async (page = 0, size = 100) => {
+  const response = await api.get('/immich/processed', {
+    params: { page, size, type: 'all' }
+  });
+  return response.data;
+};
+
+/**
+ * Get Immich timeline buckets
+ */
+export const getImmichTimeline = async () => {
+  const response = await api.get('/immich/timeline');
+  return response.data;
+};
+
+/**
+ * Get Immich assets for a specific timeline bucket
+ * @param {string} bucket - Bucket identifier
+ */
+export const getImmichBucket = async (bucket) => {
+  const response = await api.get(`/immich/timeline/${encodeURIComponent(bucket)}`);
+  return response.data;
+};
+
+/**
  * Get Immich asset thumbnail
  * @param {string} assetId - The asset ID
  * @returns {Promise<Blob>} - Thumbnail image blob
@@ -176,11 +205,23 @@ export const getAIModels = async () => {
 /**
  * Load/switch to a specific model on AI service (via backend proxy)
  * @param {string} modelKey - Model to load (small, base, large)
+ * @param {Object} options - Options { device: 'auto' | 'cpu' | 'gpu' }
  */
-export const loadModel = async (modelKey) => {
-  const response = await api.post(`/settings/models/${modelKey}/load`, {}, {
+export const loadModel = async (modelKey, options = {}) => {
+  const response = await api.post(`/settings/models/${modelKey}/load`, {
+    device: options.device || 'auto'
+  }, {
     timeout: 300000, // 5 minutes for model download
   });
+  return response.data;
+};
+
+/**
+ * Unload a specific model
+ * @param {string} modelKey - Model key
+ */
+export const unloadModel = async (modelKey) => {
+  const response = await api.post(`/settings/models/${modelKey}/unload`);
   return response.data;
 };
 

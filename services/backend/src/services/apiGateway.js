@@ -248,7 +248,11 @@ class APIGateway {
    */
   async loadModel(modelKey, options = {}) {
      try {
-      const response = await this.aiClient.post(`/api/models/${modelKey}/load`, options);
+      // User requested no timeout ("Why does it even have a timeout?")
+      // Setting timeout to 0 (infinite) to allow large models like SHARP to load
+      const response = await this.aiClient.post(`/api/models/${modelKey}/load`, options, {
+        timeout: 0 
+      });
       if (response.status !== 200) {
         throw new Error(`AI service returned status ${response.status}`);
       }

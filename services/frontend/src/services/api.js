@@ -62,6 +62,18 @@ export const getImmichPhotos = async (page = 0, size = 100) => {
 };
 
 /**
+ * Get Immich photos that have processed 3D assets (Splats)
+ * @param {number} page - Page number
+ * @param {number} size - Page size
+ */
+export const getProcessedPhotos = async (page = 0, size = 100) => {
+  const response = await api.get('/immich/processed', {
+    params: { page, size, type: 'all' }
+  });
+  return response.data;
+};
+
+/**
  * Get Immich timeline buckets
  */
 export const getImmichTimeline = async () => {

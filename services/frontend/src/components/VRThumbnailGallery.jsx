@@ -22,7 +22,7 @@ import styles from './gallery/galleryStyles';
 
 import { usePhotoViewerAnimation } from '../hooks/usePhotoViewerAnimation';
 import { usePhoto3DManager } from '../hooks/usePhoto3DManager';
-import { generateAsset, generateDepthWithModel, getPhotoFiles, deletePhotoFile, getAIModels, getSettings, convertPlyToKsplat } from '../services/api';
+import { generateAsset, generateDepthWithModel, getPhotoFiles, deletePhotoFile, getAIModels, getSettings, convertPlyToKsplat, getImmichBucket } from '../services/api';
 
 
 /**
@@ -74,6 +74,33 @@ const BackToGridButton = ({ onClick }) => (
   </group>
 );
 
+
+// Toggle Button for Filters (3D UI)
+const FilterToggleButton = ({ isFiltered, onClick }) => (
+  <group position={[-2.8, 2.0, -2.5]} rotation={[0, 0.3, 0]}>
+    <Root pixelSize={0.005} anchorX="center" anchorY="center">
+      <Container
+        width={220}
+        height={50}
+        backgroundColor={isFiltered ? "#3B82F6" : "#1F2937"}
+        backgroundOpacity={0.9}
+        hover={{ backgroundColor: isFiltered ? "#2563EB" : "#374151" }}
+        alignItems="center"
+        justifyContent="center"
+        borderRadius={25}
+        onClick={onClick}
+        cursor="pointer"
+        borderWidth={isFiltered ? 0 : 2}
+        borderColor="#4B5563"
+        flexDirection="row"
+      >
+         <Text color="white" fontSize={20} fontWeight="bold">
+            {isFiltered ? "Showing: 3D Content" : "Show 3D Only"}
+         </Text>
+      </Container>
+    </Root>
+  </group>
+);
 
 function ViewerItem({ photo, index, selectedIndex, onSelect }) {
   const isSelected = index === selectedIndex;
@@ -178,6 +205,8 @@ const calculateRealHeight = (photos, settings) => {
     const dateGroups = [];
     let currentGroup = null;
     
+    if (!photos || !Array.isArray(photos) || photos.length === 0) return 0.6; // Return at least header height to allow render
+    
     photos.forEach(photo => {
         const dateStr = photo.fileCreatedAt || photo.localDateTime || photo.createdAt;
         const date = dateStr ? new Date(dateStr) : new Date();
@@ -203,8 +232,11 @@ const calculateRealHeight = (photos, settings) => {
             let aspectRatio = 1;
             if (photo.ratio) {
                aspectRatio = photo.ratio;
-            } else if (photo.exifInfo?.exifImageWidth && photo.exifInfo?.exifImageHeight) {
+            } else if (photo.exifInfo && photo.exifInfo.exifImageWidth && photo.exifInfo.exifImageHeight) {
                aspectRatio = photo.exifInfo.exifImageWidth / photo.exifInfo.exifImageHeight;
+            } else {
+                // Fallback for missing EXIF (common in processed generic assets)
+                aspectRatio = 1.0; 
             }
             aspectRatio = Math.max(0.5, Math.min(2.5, aspectRatio));
             
@@ -277,10 +309,18 @@ const SkeletonGrid = ({ count, width, rowHeight, thumbnailHeight, gap }) => {
 function VRThumbnailGallery({ 
     timeline = [], 
     photoCache = {}, 
+    setPhotoCache,
     onLoadBucket, 
     initialSelectedId = null, 
     onSelectPhoto, 
-    onClose 
+    onClose,
+    // New Props for Filter/List Mode
+    filterMode = 'all',
+    onToggleFilter,
+    photos: propPhotos = null, // Optional explicit list of photos (overrides timeline)
+    onLoadMore,
+    hasMore,
+    loadingMore
 }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isInVR, setIsInVR] = useState(false);
@@ -331,12 +371,14 @@ function VRThumbnailGallery({
   });
   const [splatCount, setSplatCount] = useState(0);
 
-  // DERIVE PHOTOS (Moved up for access in effects)
+  // DERIVE PHOTOS - If propPhotos is provided (List Mode), use it. Otherwise derive from Timeline.
   const photos = useMemo(() => {
+     if (propPhotos) return propPhotos;
+     
      return timeline
         .map(bucket => photoCache[bucket.timeBucket] || [])
         .flat();
-  }, [timeline, photoCache]);
+  }, [timeline, photoCache, propPhotos]);
 
   // Callback when lag is detected
   const handlePerformanceDrop = useCallback(() => {
@@ -609,51 +651,12 @@ function VRThumbnailGallery({
   // --- METADATA PRE-FETCH & SCROLL ANCHORING ---
   
   // Queue metadata fetch for all buckets to ensure accurate timeline
-  useEffect(() => {
-    if (!timeline || timeline.length === 0) return;
-    
-    const fetchMetadata = async () => {
-        // Prioritize buckets: First 20, then the rest
-        // We can do this simply by iterating.
-        // To avoid flooding, we use a concurrency pool.
-        
-        const queue = [...timeline];
-        // Sort queue? Maybe center out from Viewport? For now just top-down is fine for static target.
-        
-        const WORKER_COUNT = 3;
-        let active = 0;
-        
-        const processNext = async () => {
-            if (queue.length === 0) return;
-            const bucket = queue.shift();
-            
-            // Skip if already in photoCache
-            if (photoCache[bucket.timeBucket]) {
-                processNext();
-                return;
-            }
-            
-            active++;
-            try {
-               const photos = await api.getImmichBucket(bucket.timeBucket);
-               // We only strictly *need* the metadata (ratio), but caching the photos is fine 
-               // as long as we don't render them (memory concerns?).
-               // JS Objects are cheap. 100k objects ~ 20MB RAM. Fine.
-               setPhotoCache(prev => ({ ...prev, [bucket.timeBucket]: photos }));
-            } catch (e) {
-               console.warn("Meta fetch failed", e);
-            } finally {
-               active--;
-               processNext();
-            }
-        };
-        
-        // Kickoff workers
-        for (let i=0; i<WORKER_COUNT; i++) processNext();
-    };
-    
-    fetchMetadata();
-  }, [timeline]); // Run once when timeline arrives
+  // --- METADATA PRE-FETCH & SCROLL ANCHORING ---
+  // Global prefetch removed to fix performance issues with large libraries.
+  // We now rely solely on the visibility-based loading (virtualization) below.
+
+  // Handle Load More (Infinite Scroll) for List Mode
+
 
   // Scroll Anchoring: Keep the current view stable when heights change
 
@@ -661,23 +664,27 @@ function VRThumbnailGallery({
 
   // 1. Calculate Virtual Map (Positions of all buckets)
   const virtualMap = useMemo(() => {
-    // 1. Calculate Virtual Map with Adaptive Estimation (REMOVED: Now we use Pre-fetch)
-    // Actually we keep Adaptive as a fallback until Pre-fetch finishes.
-    
-    // ... [Original Logic]
-    // But since we are updating photoCache via the pre-fetcher, 
-    // `isLoaded` will become true for everything eventually.
-    // So we just need the standard logic, but need to handle "isLoaded but not rendered" 
-    // (i.e. separate metadata cache from texture cache).
-    // Wait, `photoCache` stores the JSON objects. That IS what we use for calculation.
-    // So as soon as `fetchMetadata` updates `photoCache`, the `isLoaded` branch triggers 
-    // and we calculate Exact Height.
-    
-    // So simply modifying the pre-fetcher is enough!
-    // And restoring the simpler map logic (or keeping adaptive as fallback).
-    
-    // Let's go back to simpler map logic but kept Adaptive as fallback for the first few seconds.
-
+    // Case A: List Mode (propPhotos) -> Single bucket or just flat mapping
+    if (propPhotos) {
+        // Create a synthetic map for the flat list
+        console.log('[VRThumbnailGallery] Calculating virtual map for filtered results:', propPhotos.length);
+        const map = [];
+        
+        const height = calculateRealHeight(propPhotos, settings);
+        console.log('[VRThumbnailGallery] Calculated height for filtered results:', height);
+        
+        map.push({
+            id: 'filtered-results',
+            y: 0,
+            height: height,
+            count: propPhotos.length,
+            isLoaded: true
+        });
+        
+        return { items: map, totalHeight: height };
+    }
+  
+    // Case B: Timeline Mode (Normal)
     const map = [];
     let currentY = 0;
     
@@ -724,7 +731,7 @@ function VRThumbnailGallery({
     });
     
     return { items: map, totalHeight: currentY };
-  }, [timeline, photoCache, settings]);
+  }, [timeline, photoCache, settings, propPhotos]);
 
   // Derive Year Positions from Virtual Map for Scrubber
   const groupPositions = useMemo(() => {
@@ -795,6 +802,18 @@ function VRThumbnailGallery({
   // --- END VIRTUALIZATION ---
   
   const totalHeight = virtualMap.totalHeight;
+
+  // Handle Load More (Infinite Scroll) for List Mode
+  useEffect(() => {
+      // If we are in list mode (propPhotos provided) and scrolled near bottom
+      if (!propPhotos || !onLoadMore || !hasMore || loadingMore) return;
+      
+      // Simple check: if scrollY is near totalHeight
+      const threshold = 2.0; // meters
+      if (totalHeight - scrollY < threshold) {
+          onLoadMore();
+      }
+  }, [scrollY, totalHeight, propPhotos, onLoadMore, hasMore, loadingMore]);
 
   // Scroll to a specific year
   const handleScrollToYear = useCallback((year) => {
@@ -1021,16 +1040,25 @@ function VRThumbnailGallery({
             onSettingsChange={setSettings}
           />
           
+          
           {/* Timeline Scrubber (VR Native) */}
           {!selectedPhotoId && (
-            <TimelineScrubber 
-              onScrollToYear={handleScrollToYear}
-              onScroll={(y) => setScrollY(Math.max(0, Math.min(y, totalHeight)))}
-              years={displayYears} // Note: This prop is not actually used in TimelineScrubber, it uses groupPositions
-              groupPositions={groupPositions}
-              scrollY={scrollY}
-              totalHeight={totalHeight}
-            />
+            <>
+                <TimelineScrubber 
+                  onScrollToYear={handleScrollToYear}
+                  onScroll={(y) => setScrollY(Math.max(0, Math.min(y, totalHeight)))}
+                  years={displayYears} // Note: This prop is not actually used in TimelineScrubber, it uses groupPositions
+                  groupPositions={groupPositions}
+                  scrollY={scrollY}
+                  totalHeight={totalHeight}
+                />
+                
+                {/* Processed 3D Filter Toggle (Left Side) */}
+                <FilterToggleButton 
+                    isFiltered={filterMode === 'splats'}
+                    onClick={onToggleFilter}
+                />
+            </>
           )}
           
           {/* Render Virtualized Buckets if NO photo selected */}
@@ -1040,7 +1068,7 @@ function VRThumbnailGallery({
                     <group key={bucket.id} position={[0, -bucket.y, 0]}>
                         {bucket.isLoaded ? (
                             <ThumbnailGrid
-                                photos={photoCache[bucket.id] || []}
+                                photos={bucket.id === 'filtered-results' ? propPhotos : (photoCache[bucket.id] || [])}
                                 onSelectPhoto={handleSelect}
                                 settings={settings}
                                 setSettings={setSettings}

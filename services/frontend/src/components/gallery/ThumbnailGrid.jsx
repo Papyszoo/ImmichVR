@@ -27,8 +27,13 @@ function ThumbnailGrid({
     let currentGroup = null;
     
     photos.forEach(photo => {
-      const dateStr = photo.fileCreatedAt || photo.localDateTime || photo.createdAt;
-      const date = dateStr ? new Date(dateStr) : new Date();
+      const dateStr = photo.fileCreatedAt || photo.localDateTime || photo.createdAt || new Date().toISOString();
+      let date = new Date();
+      try {
+          date = new Date(dateStr);
+          if (isNaN(date.getTime())) date = new Date();
+      } catch (e) { console.warn('Invalid date:', dateStr); }
+      
       const key = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
       const year = date.getFullYear();
       
@@ -69,11 +74,11 @@ function ThumbnailGrid({
       
       group.photos.forEach((photo, index) => {
         // Calculate thumbnail width based on aspect ratio
-        const exif = photo.exifInfo;
+        const exif = photo.exifInfo || {};
         let aspectRatio = 1;
         if (photo.ratio) {
           aspectRatio = photo.ratio;
-        } else if (exif?.exifImageWidth && exif?.exifImageHeight) {
+        } else if (exif.exifImageWidth && exif.exifImageHeight) {
           aspectRatio = exif.exifImageWidth / exif.exifImageHeight;
         }
         aspectRatio = Math.max(0.5, Math.min(2.5, aspectRatio));

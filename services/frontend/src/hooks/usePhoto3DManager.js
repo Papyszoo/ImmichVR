@@ -106,6 +106,21 @@ export function usePhoto3DManager({ generatedFiles = [], availableModels = [], p
     const options = [];
     
     // Map each available model to a view option
+    
+    // Always add "Original Photo" option first
+    options.push({
+      key: 'normal',
+      name: 'Original Photo',
+      type: 'normal',
+      params: '2D',
+      status: 'ready',
+      fileId: null,
+      canGenerate: false,
+      canConvert: false,
+      canRemove: false,
+      isDownloaded: true,
+    });
+
     availableModels.forEach(model => {
       const isDownloaded = model.is_downloaded || false;
       const modelType = model.type || 'depth';

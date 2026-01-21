@@ -432,6 +432,7 @@ function VRThumbnailGallery({
         if (assetType === 'depth') {
           const url = URL.createObjectURL(blob);
           setDepthCache(prev => ({ ...prev, [selectedPhotoId]: url }));
+          setActiveDepthModel(settings.defaultDepthModel);
         }
       } catch (err) {
         console.warn('Auto-generate asset failed:', err);
@@ -575,6 +576,23 @@ function VRThumbnailGallery({
     selectingRef.current = true;
     
     try {
+      if (modelKey === 'normal') {
+        if (splatUrl) {
+          URL.revokeObjectURL(splatUrl);
+          setSplatUrl(null);
+        }
+        
+        setActiveDepthModel('normal');
+        
+        // Remove from depth cache to force 2D fallback
+        setDepthCache(prev => {
+          const newCache = { ...prev };
+          delete newCache[selectedPhotoId];
+          return newCache;
+        });
+        return;
+      }
+
       let file;
       if (modelKey === 'ksplat') {
         file = photoFiles.find(f => f.modelKey === 'sharp' && f.format === 'ksplat');

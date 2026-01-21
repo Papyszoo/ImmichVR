@@ -113,12 +113,14 @@ const ModelRow = ({ viewOption, isActive, onGenerate, onRemove, onConvert, onSel
         ) : isReady ? (
           <>
             {/* Remove button */}
-            <IconButton 
-              icon={ICONS.remove} 
-              onClick={(e) => { e.stopPropagation(); onRemove(key); }} 
-              color={COLORS.danger}
-              title="Remove"
-            />
+            {canRemove && (
+              <IconButton 
+                icon={ICONS.remove} 
+                onClick={(e) => { e.stopPropagation(); onRemove(key); }} 
+                color={COLORS.danger}
+                title="Remove"
+              />
+            )}
           </>
         ) : isMissing && canGenerate ? (
           <>
@@ -162,6 +164,7 @@ function Photo3DViewsPanel({
   // Group options by type
   const depthOptions = viewOptions.filter(opt => opt.type === 'depth');
   const splatOptions = viewOptions.filter(opt => opt.type === 'splat');
+  const normalOptions = viewOptions.filter(opt => opt.type === 'normal');
   
   // Calculate dynamic height based on content
   // Each section header is 24px, each row is 44px, gaps, padding
@@ -169,6 +172,7 @@ function Photo3DViewsPanel({
   const sectionHeaderHeight = 28;
   const rowHeight = 48;
   const totalHeight = baseHeight 
+    + (normalOptions.length > 0 ? sectionHeaderHeight + normalOptions.length * rowHeight : 0)
     + (depthOptions.length > 0 ? sectionHeaderHeight + depthOptions.length * rowHeight : 0)
     + (splatOptions.length > 0 ? sectionHeaderHeight + splatOptions.length * rowHeight : 0);
   
@@ -193,6 +197,28 @@ function Photo3DViewsPanel({
             <Text color={COLORS.textMuted} fontSize={14}>Loading models...</Text>
           ) : (
             <Container flexDirection="column" gap={8} width="100%">
+              {/* 2D View Section */}
+              {viewOptions.some(opt => opt.type === 'normal') && (
+                <Container flexDirection="column" gap={4} width="100%">
+                   <Text fontSize={12} color={COLORS.textMuted} marginBottom={4}>
+                    BASIC
+                  </Text>
+                  {viewOptions.filter(opt => opt.type === 'normal').map((viewOption) => (
+                    <ModelRow
+                      key={viewOption.key}
+                      viewOption={viewOption}
+                      isActive={activeModel === viewOption.key || (activeModel === null && viewOption.key === 'normal')} 
+                      // Note: activeModel === null implies we are effectively in normal mode if no depth/splat is active?
+                      // Actually, VRThumbnailGallery initializes activeDepthModel to null.
+                      // But maybe we should be explicit. 
+                      // Let's stick to strict equality for now, and handle the "default selected" logic in parent if needed.
+                      // Or better: In VRThumbnailGallery, when we revert to normal, we set activeDepthModel to 'normal'.
+                      onSelect={onSelect}
+                    />
+                  ))}
+                </Container>
+              )}
+
               {/* Depth Maps Section */}
               {depthOptions.length > 0 && (
                 <Container flexDirection="column" gap={4} width="100%">

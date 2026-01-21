@@ -1,5 +1,8 @@
-class ModelManager {
+const EventEmitter = require('events');
+
+class ModelManager extends EventEmitter {
   constructor(apiGateway, dbPool) {
+    super();
     this.apiGateway = apiGateway;
     
     // Lazy load default pool if not provided (allows testing without pg)
@@ -113,6 +116,8 @@ class ModelManager {
 
     // 3. Load via API Gateway
     console.log(`[ModelManager] Loading model ${modelKey} (Trigger: ${trigger}, Device: ${options?.device || 'default'})`);
+    this.emit('model:status', { status: 'loading', modelKey });
+    
     try {
       await this.apiGateway.loadModel(modelKey, options);
       
@@ -122,8 +127,15 @@ class ModelManager {
       // 4. Set initial activity/timeout
       await this.registerActivity(trigger);
       
+      this.emit('model:status', { 
+        status: 'loaded', 
+        modelKey, 
+        loadedAt: this.loadedAt 
+      });
+      
     } catch (error) {
       console.error(`[ModelManager] Failed to load model ${modelKey}:`, error);
+      this.emit('model:status', { status: 'error', message: error.message, modelKey });
       throw error;
     }
   }
@@ -174,8 +186,39 @@ class ModelManager {
           this.currentModel = null;
           this.loadTrigger = null;
           this.clearTimeout();
+          this.emit('model:status', { status: 'unloaded', modelKey: target });
       }
     }
+  }
+
+  /**
+   * Public: Download a model
+   * @param {string} modelKey
+   */
+  async downloadModel(modelKey) {
+     console.log(`[ModelManager] Downloading model ${modelKey}`);
+     this.emit('model:status', { status: 'downloading', modelKey });
+     
+     try {
+       // We can call download directly on the gateway
+       await this.apiGateway.downloadModel(modelKey);
+       
+       // Update DB status to 'downloaded' immediately so next load succeeds
+       await this.pool.query(
+         `UPDATE ai_models SET status = 'downloaded', downloaded_at = NOW() 
+          WHERE model_key = $1`,
+         [modelKey]
+       );
+       
+       this.emit('model:status', { status: 'downloaded', modelKey });
+       console.log(`[ModelManager] Model ${modelKey} downloaded successfully`);
+       
+     } catch (error) {
+        console.error(`[ModelManager] Failed to download model ${modelKey}:`, error);
+        this.emit('model:status', { status: 'error', message: error.message, modelKey });
+        // Revert status if needed? Or just leave as is.
+        throw error;
+     }
   }
 
   /**

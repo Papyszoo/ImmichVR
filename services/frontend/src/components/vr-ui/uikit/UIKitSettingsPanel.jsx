@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Root, Container, Text } from '@react-three/uikit';
 import { getSettings, updateSettings, getModels, getAIModels, loadModel, unloadModel, markModelDownloaded, downloadModel } from '../../../services/api';
+import { modelSocket } from '../../../services/socket';
 
 const COLORS = {
     bg: '#000000', // Pure Black backing
@@ -255,22 +256,15 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
     const currentDevice = activeDevice; // global state updated from fetchModels
 
     setLoadingModel(modelKey);
-    try {
-        if (isLoaded && currentDevice === device) {
-            // Unload if clicking the active button
-            await unloadModel(modelKey);
-        } else {
-            // Load (or switch device)
-            // device: 'cpu' or 'gpu'
-            await loadModel(modelKey, { device });
-        }
-        
-      await fetchModels();
-    } catch (err) {
-      console.error('Failed to toggle model:', err);
-    } finally {
-      setLoadingModel(null);
+    
+    if (isLoaded && currentDevice === device) {
+        // Unload
+        modelSocket.unload();
+    } else {
+        // Load
+        modelSocket.load(modelKey, 'manual', { device });
     }
+    // No finally{setLoadingModel(null)} here because socket event will clear it
   };
 
   const updateSetting = async (key, value) => {
@@ -297,22 +291,59 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
     }
   };
 
-  // Handle model download/load
-  const handleDownloadModel = async (modelKey) => {
+  // Listen for Socket.IO updates
+  useEffect(() => {
+    const handleStatus = (data) => {
+        console.log('[SettingsPanel] Socket Update:', data);
+        
+        // Handle Download Status
+        if (data.status === 'downloading') {
+            setLoadingModel(data.modelKey);
+        }
+        else if (data.status === 'downloaded') {
+            setLoadingModel(null);
+            fetchModels();
+        }
+        else if (data.status === 'error') {
+            setLoadingModel(null);
+            console.error('[SettingsPanel] Model Error:', data.message);
+        }
+        
+        // Handle Load/Unload Status
+        else if (data.status === 'loading') {
+            setLoadingModel(data.modelKey);
+        }
+        else if (data.status === 'loaded') {
+            setLoadingModel(null);
+            setCurrentLoadedModel(data.modelKey);
+            fetchModels();
+        }
+        else if (data.status === 'unloaded') {
+             setLoadingModel(null);
+             setCurrentLoadedModel(null);
+             fetchModels();
+        }
+    };
+
+    const cleanup = modelSocket.onStatusChange(handleStatus);
+    
+    // Also listen for errors specifically if separate
+    const cleanupError = modelSocket.onError((data) => {
+        setLoadingModel(null);
+        console.error('[SettingsPanel] Socket Error:', data);
+    });
+
+    return () => {
+        cleanup();
+        cleanupError();
+    };
+  }, []);
+
+  // Handle model downloading via Socket.IO
+  const handleDownloadModel = (modelKey) => {
     setLoadingModel(modelKey);
-    try {
-      // Download model (disk only, no activation)
-      await downloadModel(modelKey);
-      // Mark as downloaded in database (keep DB in sync) - backend might do this already in downloadModel but good to ensure
-      // await markModelDownloaded(modelKey); // The new download endpoint updates DB too, so this might be redundant but harmless if idempotent. 
-      // Actually backend downloadModel updates DB. Remove explicit mark if api.downloadModel calls backend.
-      // Refresh models list from AI service to see updated status
-      await fetchModels();
-    } catch (err) {
-      console.error('Failed to download model:', err);
-    } finally {
-      setLoadingModel(null);
-    }
+    // Fire and forget - status comes back via socket
+    modelSocket.download(modelKey);
   };
 
   if (!isOpen) return null;

@@ -1,12 +1,16 @@
 import { test, expect } from '@playwright/test';
 
+// Use baseURL from playwright.config.ts
+const BASE_URL = process.env.BASE_URL || '${BASE_URL}';
+
+
 test.describe('Asset Operations', () => {
   let testAssetId: string;
   let testFileId: string;
 
   test.beforeAll(async ({ request }) => {
     // Get a test photo to work with
-    const photosResponse = await request.get('https://localhost:21371/api/immich/photos?size=1', {
+    const photosResponse = await request.get('${BASE_URL}/api/immich/photos?size=1', {
       ignoreHTTPSErrors: true
     });
     const photosData = await photosResponse.json();
@@ -149,7 +153,7 @@ test.describe('Asset Operations', () => {
 
   test('should handle 404 for non-existent file download', async ({ request }) => {
     const response = await request.get(
-      'https://localhost:21371/api/assets/fake-id/files/fake-file-id/download',
+      '${BASE_URL}/api/assets/fake-id/files/fake-file-id/download',
       { ignoreHTTPSErrors: true }
     );
     
@@ -161,7 +165,7 @@ test.describe('Asset Operations', () => {
 
   test('should handle 404 for non-existent file deletion', async ({ request }) => {
     const response = await request.delete(
-      'https://localhost:21371/api/assets/fake-id/files/fake-file-id',
+      '${BASE_URL}/api/assets/fake-id/files/fake-file-id',
       { ignoreHTTPSErrors: true }
     );
     
@@ -204,7 +208,7 @@ test.describe('Asset Operations', () => {
     }
 
     const response = await request.post(
-      `https://localhost:21371/api/assets/${testAssetId}/convert`,
+      `${BASE_URL}/api/assets/${testAssetId}/convert`,
       {
         ignoreHTTPSErrors: true,
         data: {
@@ -214,12 +218,10 @@ test.describe('Asset Operations', () => {
       }
     );
     
-    // Should be 400 or 404
-    expect([400, 404]).toContain(response.status());
+    // Should be 400 Bad Request for unsupported formats
+    expect(response.status()).toBe(400);
     
-    if (response.status() === 400) {
-      const data = await response.json();
-      expect(data.error).toBe('Unsupported format');
-    }
+    const data = await response.json();
+    expect(data.error).toBe('Unsupported format');
   });
 });

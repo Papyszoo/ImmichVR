@@ -221,7 +221,8 @@ async function runTests() {
     try {
       await axios.post(`${BASE_URL}/api/queue/worker/stop`);
     } catch (e) {
-      // Ignore cleanup errors
+      // Log but do not fail tests on cleanup errors
+      console.warn('Warning: failed to stop worker during cleanup:', e && e.message ? e.message : e);
     }
 
     // Summary

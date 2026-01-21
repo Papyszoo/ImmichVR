@@ -60,7 +60,8 @@ describe('ThumbnailGrid', () => {
       />
     );
 
-    expect(renderer.scene.children.length).toBeGreaterThanOrEqual(0);
+    expect(renderer).toBeDefined();
+    expect(renderer.scene).toBeDefined();
   });
 
   it('should group photos by date', async () => {
@@ -84,7 +85,8 @@ describe('ThumbnailGrid', () => {
 
     // Component should create date groups
     // We have 2 photos in January and 1 in February
-    expect(renderer.scene.children.length).toBeGreaterThanOrEqual(0);
+    expect(renderer).toBeDefined();
+    expect(renderer.scene).toBeDefined();
   });
 
   it('should render photos in a grid layout', async () => {
@@ -130,7 +132,8 @@ describe('ThumbnailGrid', () => {
     );
 
     // Should render but have minimal children (no photos to display)
-    expect(renderer.scene.children.length).toBeGreaterThanOrEqual(0);
+    expect(renderer).toBeDefined();
+    expect(renderer.scene).toBeDefined();
   });
 
   it('should apply wall curvature from settings', async () => {
@@ -158,7 +161,8 @@ describe('ThumbnailGrid', () => {
     );
 
     // Component should apply curvature to layout
-    expect(renderer.scene.children.length).toBeGreaterThanOrEqual(0);
+    expect(renderer).toBeDefined();
+    expect(renderer.scene).toBeDefined();
   });
 
   it('should respond to scrollY changes', async () => {
@@ -196,7 +200,8 @@ describe('ThumbnailGrid', () => {
     );
 
     // Component should update positions based on scroll
-    expect(renderer.scene.children.length).toBeGreaterThanOrEqual(0);
+    expect(renderer).toBeDefined();
+    expect(renderer.scene).toBeDefined();
   });
 
   it('should use depth cache when available', async () => {
@@ -224,7 +229,8 @@ describe('ThumbnailGrid', () => {
     );
 
     // Component should use cached depth maps
-    expect(renderer.scene.children.length).toBeGreaterThanOrEqual(0);
+    expect(renderer).toBeDefined();
+    expect(renderer.scene).toBeDefined();
   });
 
   it('should handle photos with missing dates', async () => {
@@ -255,7 +261,8 @@ describe('ThumbnailGrid', () => {
     );
 
     // Should handle gracefully and use current date
-    expect(renderer.scene.children.length).toBeGreaterThanOrEqual(0);
+    expect(renderer).toBeDefined();
+    expect(renderer.scene).toBeDefined();
   });
 
   it('should calculate aspect ratios correctly', async () => {
@@ -295,6 +302,7 @@ describe('ThumbnailGrid', () => {
     );
 
     // Component should layout with different widths based on aspect ratio
-    expect(renderer.scene.children.length).toBeGreaterThanOrEqual(0);
+    expect(renderer).toBeDefined();
+    expect(renderer.scene).toBeDefined();
   });
 });

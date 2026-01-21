@@ -28,8 +28,8 @@ async function runTests() {
       testAssetId = photosResponse.data.data[0].id;
       console.log(`Using test asset: ${testAssetId}\n`);
     } else {
-      console.log('⊘ No photos available for testing\n');
-      return;
+      console.error('⊘ No photos available for testing; aborting integration tests.\n');
+      process.exit(1);
     }
 
     // Test 1: List Generated Files
@@ -126,13 +126,18 @@ async function runTests() {
         to: 'ksplat'
       });
       
-      // Accept 200, 400, or 404 (depending on whether PLY exists)
-      if ([200, 400, 404].includes(response.status)) {
+      // 404 when PLY file doesn't exist, 200 on success
+      if ([200, 404].includes(response.status)) {
         console.log('✓ Conversion endpoint responded correctly');
         console.log(`  Status: ${response.status}`);
         if (response.data.message) {
           console.log(`  Message: ${response.data.message}`);
         }
+        testsPassed++;
+      } else if (response.status === 400) {
+        // 400 for invalid parameters
+        console.log('✓ Conversion endpoint correctly rejected invalid request');
+        console.log(`  Status: ${response.status}`);
         testsPassed++;
       } else {
         console.log('✗ Unexpected response:', response.status);

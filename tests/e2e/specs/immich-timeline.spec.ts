@@ -1,8 +1,12 @@
 import { test, expect } from '@playwright/test';
 
+// Use baseURL from playwright.config.ts
+const BASE_URL = process.env.BASE_URL || '${BASE_URL}';
+
+
 test.describe('Immich Timeline API', () => {
   test('should fetch timeline buckets', async ({ request }) => {
-    const response = await request.get('https://localhost:21371/api/immich/timeline', {
+    const response = await request.get('${BASE_URL}/api/immich/timeline', {
       ignoreHTTPSErrors: true
     });
     
@@ -23,7 +27,7 @@ test.describe('Immich Timeline API', () => {
 
   test('should fetch assets for a specific timeline bucket', async ({ request }) => {
     // First get timeline buckets
-    const bucketsResponse = await request.get('https://localhost:21371/api/immich/timeline', {
+    const bucketsResponse = await request.get('${BASE_URL}/api/immich/timeline', {
       ignoreHTTPSErrors: true
     });
     const bucketsData = await bucketsResponse.json();
@@ -51,7 +55,7 @@ test.describe('Immich Timeline API', () => {
   });
 
   test('should fetch asset statistics', async ({ request }) => {
-    const response = await request.get('https://localhost:21371/api/immich/statistics', {
+    const response = await request.get('${BASE_URL}/api/immich/statistics', {
       ignoreHTTPSErrors: true
     });
     
@@ -67,7 +71,7 @@ test.describe('Immich Timeline API', () => {
   });
 
   test('should fetch videos from Immich API', async ({ request }) => {
-    const response = await request.get('https://localhost:21371/api/immich/videos?size=10', {
+    const response = await request.get('${BASE_URL}/api/immich/videos?size=10', {
       ignoreHTTPSErrors: true
     });
     
@@ -87,7 +91,7 @@ test.describe('Immich Timeline API', () => {
   });
 
   test('should fetch processed photos with 3D assets', async ({ request }) => {
-    const response = await request.get('https://localhost:21371/api/immich/processed?size=10', {
+    const response = await request.get('${BASE_URL}/api/immich/processed?size=10', {
       ignoreHTTPSErrors: true
     });
     
@@ -108,7 +112,7 @@ test.describe('Immich Timeline API', () => {
   });
 
   test('should handle search endpoint (not implemented)', async ({ request }) => {
-    const response = await request.post('https://localhost:21371/api/immich/search', {
+    const response = await request.post('${BASE_URL}/api/immich/search', {
       ignoreHTTPSErrors: true,
       data: {
         query: 'test',

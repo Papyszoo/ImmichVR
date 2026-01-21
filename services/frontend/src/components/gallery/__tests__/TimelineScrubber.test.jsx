@@ -28,7 +28,8 @@ describe('TimelineScrubber', () => {
       />
     );
 
-    expect(renderer.scene.children.length).toBeGreaterThanOrEqual(0);
+    expect(renderer).toBeDefined();
+    expect(renderer.scene).toBeDefined();
   });
 
   it('should render with empty groupPositions', async () => {
@@ -46,7 +47,8 @@ describe('TimelineScrubber', () => {
     );
 
     // Should render but with no markers
-    expect(renderer.scene.children.length).toBeGreaterThanOrEqual(0);
+    expect(renderer).toBeDefined();
+    expect(renderer.scene).toBeDefined();
   });
 
   it('should create markers for each time period', async () => {
@@ -93,7 +95,8 @@ describe('TimelineScrubber', () => {
     );
 
     // Component should update internal state
-    expect(renderer.scene.children.length).toBeGreaterThanOrEqual(0);
+    expect(renderer).toBeDefined();
+    expect(renderer.scene).toBeDefined();
   });
 
   it('should handle totalHeight changes', async () => {
@@ -122,7 +125,8 @@ describe('TimelineScrubber', () => {
     );
 
     // Component should recalculate marker positions
-    expect(renderer.scene.children.length).toBeGreaterThanOrEqual(0);
+    expect(renderer).toBeDefined();
+    expect(renderer.scene).toBeDefined();
   });
 
   it('should display labels for first and last markers', async () => {
@@ -166,7 +170,8 @@ describe('TimelineScrubber', () => {
     );
 
     // Component manages internal dragging state
-    expect(renderer.scene.children.length).toBeGreaterThanOrEqual(0);
+    expect(renderer).toBeDefined();
+    expect(renderer.scene).toBeDefined();
   });
 
   it('should properly position markers based on Y coordinates', async () => {
@@ -215,7 +220,8 @@ describe('TimelineScrubber', () => {
     );
 
     // Component should sort internally
-    expect(renderer.scene.children.length).toBeGreaterThanOrEqual(0);
+    expect(renderer).toBeDefined();
+    expect(renderer.scene).toBeDefined();
   });
 
   it('should clean up on unmount', async () => {

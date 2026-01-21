@@ -1,8 +1,11 @@
 import { test, expect } from '@playwright/test';
 
+// Use baseURL from playwright.config.ts
+const BASE_URL = process.env.BASE_URL || 'https://localhost:21371';
+
 test.describe('Settings and Model Management', () => {
   test('should fetch current settings', async ({ request }) => {
-    const response = await request.get('https://localhost:21371/api/settings', {
+    const response = await request.get(`${BASE_URL}/api/settings`, {
       ignoreHTTPSErrors: true
     });
     
@@ -17,14 +20,14 @@ test.describe('Settings and Model Management', () => {
 
   test('should update settings', async ({ request }) => {
     // Get current settings
-    const currentResponse = await request.get('https://localhost:21371/api/settings', {
+    const currentResponse = await request.get('${BASE_URL}/api/settings', {
       ignoreHTTPSErrors: true
     });
     const currentSettings = await currentResponse.json();
     
     // Update settings
     const newAutoGenerate = !currentSettings.autoGenerateOnEnter;
-    const updateResponse = await request.put('https://localhost:21371/api/settings', {
+    const updateResponse = await request.put('${BASE_URL}/api/settings', {
       ignoreHTTPSErrors: true,
       data: {
         autoGenerateOnEnter: newAutoGenerate
@@ -37,7 +40,7 @@ test.describe('Settings and Model Management', () => {
     expect(updatedData.autoGenerateOnEnter).toBe(newAutoGenerate);
     
     // Restore original settings
-    await request.put('https://localhost:21371/api/settings', {
+    await request.put('${BASE_URL}/api/settings', {
       ignoreHTTPSErrors: true,
       data: {
         autoGenerateOnEnter: currentSettings.autoGenerateOnEnter
@@ -46,7 +49,7 @@ test.describe('Settings and Model Management', () => {
   });
 
   test('should reject invalid model in settings', async ({ request }) => {
-    const response = await request.put('https://localhost:21371/api/settings', {
+    const response = await request.put('${BASE_URL}/api/settings', {
       ignoreHTTPSErrors: true,
       data: {
         defaultDepthModel: 'invalid-model'
@@ -60,7 +63,7 @@ test.describe('Settings and Model Management', () => {
   });
 
   test('should fetch AI models list', async ({ request }) => {
-    const response = await request.get('https://localhost:21371/api/settings/models', {
+    const response = await request.get('${BASE_URL}/api/settings/models', {
       ignoreHTTPSErrors: true
     });
     
@@ -81,7 +84,7 @@ test.describe('Settings and Model Management', () => {
   });
 
   test('should fetch AI models from AI service', async ({ request }) => {
-    const response = await request.get('https://localhost:21371/api/settings/models/ai', {
+    const response = await request.get('${BASE_URL}/api/settings/models/ai', {
       ignoreHTTPSErrors: true
     });
     
@@ -94,7 +97,7 @@ test.describe('Settings and Model Management', () => {
   });
 
   test('should sync models with AI service', async ({ request }) => {
-    const response = await request.post('https://localhost:21371/api/settings/models/sync', {
+    const response = await request.post('${BASE_URL}/api/settings/models/sync', {
       ignoreHTTPSErrors: true
     });
     
@@ -108,7 +111,7 @@ test.describe('Settings and Model Management', () => {
 
   test('should handle model lifecycle - load model', async ({ request }) => {
     // Get available models
-    const modelsResponse = await request.get('https://localhost:21371/api/settings/models', {
+    const modelsResponse = await request.get('${BASE_URL}/api/settings/models', {
       ignoreHTTPSErrors: true
     });
     const modelsData = await modelsResponse.json();
@@ -137,7 +140,7 @@ test.describe('Settings and Model Management', () => {
 
   test('should handle model lifecycle - unload model', async ({ request }) => {
     // Get loaded models
-    const modelsResponse = await request.get('https://localhost:21371/api/settings/models', {
+    const modelsResponse = await request.get('${BASE_URL}/api/settings/models', {
       ignoreHTTPSErrors: true
     });
     const modelsData = await modelsResponse.json();
@@ -162,7 +165,7 @@ test.describe('Settings and Model Management', () => {
 
   test('should handle downloading a model', async ({ request }) => {
     // Get not-downloaded models
-    const modelsResponse = await request.get('https://localhost:21371/api/settings/models', {
+    const modelsResponse = await request.get('${BASE_URL}/api/settings/models', {
       ignoreHTTPSErrors: true
     });
     const modelsData = await modelsResponse.json();
@@ -174,43 +177,43 @@ test.describe('Settings and Model Management', () => {
     
     // Try to download (this will likely take a long time, so we just verify the endpoint responds)
     const response = await request.post(
-      `https://localhost:21371/api/settings/models/${notDownloadedModel.key}/download`,
+      `${BASE_URL}/api/settings/models/${notDownloadedModel.key}/download`,
       { 
         ignoreHTTPSErrors: true,
         timeout: 5000 // Short timeout to just verify endpoint works
       }
     );
     
-    // Accept either 200 (started) or timeout
-    expect([200, 500]).toContain(response.status());
+    // Should return 200 when successfully started
+    expect(response.status()).toBe(200);
   });
 
   test('should handle deleting a model', async ({ request }) => {
     // This is a destructive operation, so we only test the endpoint structure
     const response = await request.delete(
-      'https://localhost:21371/api/settings/models/fake-model',
+      `${BASE_URL}/api/settings/models/fake-model`,
       { ignoreHTTPSErrors: true }
     );
     
-    // Should return 404 or 400 for non-existent model
-    expect([400, 404, 500]).toContain(response.status());
+    // Should return 404 for non-existent model
+    expect([400, 404]).toContain(response.status());
   });
 
   test('should handle invalid model key for load', async ({ request }) => {
     const response = await request.post(
-      'https://localhost:21371/api/settings/models/invalid-model/load',
+      `${BASE_URL}/api/settings/models/invalid-model/load`,
       { ignoreHTTPSErrors: true }
     );
     
-    expect([400, 404, 500]).toContain(response.status());
+    expect([400, 404]).toContain(response.status());
   });
 
   test('should handle invalid model key for unload', async ({ request }) => {
     const response = await request.post(
-      'https://localhost:21371/api/settings/models/invalid-model/unload',
+      `${BASE_URL}/api/settings/models/invalid-model/unload`,
       { ignoreHTTPSErrors: true }
     );
     
-    expect([400, 404, 500]).toContain(response.status());
+    expect([400, 404]).toContain(response.status());
   });
 });

@@ -54,7 +54,8 @@ describe('VideoDepthPlayer', () => {
       />
     );
 
-    expect(renderer.scene.children.length).toBeGreaterThanOrEqual(0);
+    expect(renderer).toBeDefined();
+    expect(renderer.scene).toBeDefined();
   });
 
   it('should load and extract frames from ZIP', async () => {
@@ -85,7 +86,8 @@ describe('VideoDepthPlayer', () => {
     );
 
     // Component should start paused
-    expect(renderer.scene.children.length).toBeGreaterThanOrEqual(0);
+    expect(renderer).toBeDefined();
+    expect(renderer.scene).toBeDefined();
   });
 
   it('should render control buttons', async () => {
@@ -154,7 +156,8 @@ describe('VideoDepthPlayer', () => {
     await new Promise(resolve => setTimeout(resolve, 100));
 
     // Component has internal zoom state
-    expect(renderer.scene.children.length).toBeGreaterThanOrEqual(0);
+    expect(renderer).toBeDefined();
+    expect(renderer.scene).toBeDefined();
   });
 
   it('should support rotation adjustments', async () => {
@@ -171,7 +174,8 @@ describe('VideoDepthPlayer', () => {
     await new Promise(resolve => setTimeout(resolve, 100));
 
     // Component has internal rotation state
-    expect(renderer.scene.children.length).toBeGreaterThanOrEqual(0);
+    expect(renderer).toBeDefined();
+    expect(renderer.scene).toBeDefined();
   });
 
   it('should handle missing depthBlob gracefully', async () => {
@@ -189,7 +193,8 @@ describe('VideoDepthPlayer', () => {
     );
 
     // Should render but show loading state
-    expect(renderer.scene.children.length).toBeGreaterThanOrEqual(0);
+    expect(renderer).toBeDefined();
+    expect(renderer.scene).toBeDefined();
   });
 
   it('should clean up on unmount', async () => {

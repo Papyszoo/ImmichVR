@@ -15,6 +15,8 @@ function ThumbnailGrid({
   scrollY,
   depthCache = {},
   groupPositions,
+  selectionMode = false,
+  selectedPhotos = new Set(),
 
   disableVerticalShift = false
 }) {
@@ -213,6 +215,8 @@ function ThumbnailGrid({
           thumbnailHeight={thumbnailHeight}
           enableDepth={false} // Force disable depth for grid thumbnails
           useSimpleParallax={useSimpleParallax}
+          isSelected={selectedPhotos.has(photo.id)}
+          selectionMode={selectionMode}
         />
       ))}
     </group>

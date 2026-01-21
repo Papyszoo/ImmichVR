@@ -54,8 +54,9 @@ const IconButton = ({ icon, onClick, color = '#FFFFFF', title = '' }) => (
  * Single model row showing status and action
  * Now accepts a viewOption object with pre-computed status
  */
-const ModelRow = ({ viewOption, isActive, onGenerate, onRemove, onConvert, onSelect }) => {
+const ModelRow = ({ viewOption, isActive, onGenerate, onRemove, onConvert, onSelect, queueState }) => {
   const { key, name, params, status, canGenerate, canRemove, canConvert, isVirtual } = viewOption;
+  const { isQueued, isProcessing } = queueState || { isQueued: false, isProcessing: false };
   
   // Determine visual state
   const isReady = status === 'ready';
@@ -64,16 +65,34 @@ const ModelRow = ({ viewOption, isActive, onGenerate, onRemove, onConvert, onSel
   
   // Click on the row to generate (if missing) or select (if ready)
   const handleRowClick = () => {
+    console.log(`[ModelRow] Clicked ${key}. Status: ${status}, Queued: ${isQueued}, Processing: ${isProcessing}`);
+    
+    // If queued or processing, do nothing (block duplicates)
+    if (isQueued || isProcessing) {
+        console.log('[ModelRow] Ignoring click because item is queued or processing');
+        return;
+    }
+
     if (isMissing && canGenerate) {
+      console.log('[ModelRow] Triggering generation/conversion...');
       // For virtual KSPLAT entry, trigger conversion via onConvert
       if (isVirtual && key === 'ksplat') {
+        console.log('[ModelRow] Calling onConvert(ksplat)');
         onConvert && onConvert(key);
       } else {
         // For regular models, trigger generation
-        onGenerate && onGenerate(key);
+        console.log(`[ModelRow] Calling onGenerate(${key})`);
+        if (onGenerate) {
+            onGenerate(key); 
+        } else {
+            console.error('[ModelRow] onGenerate prop is missing!');
+        }
       }
     } else if (isReady && onSelect) {
+      console.log(`[ModelRow] Selecting ${key}`);
       onSelect(key);
+    } else {
+        console.log('[ModelRow] Click ignored. Conditions not met:', { isMissing, canGenerate, isReady, hasOnSelect: !!onSelect });
     }
   };
   
@@ -127,8 +146,12 @@ const ModelRow = ({ viewOption, isActive, onGenerate, onRemove, onConvert, onSel
             {/* For KSPLAT virtual entry, show generate as conversion */}
             {isVirtual && key === 'ksplat' ? (
               <Text color={COLORS.textMuted} fontSize={11}>Click to convert</Text>
+            ) : isProcessing ? (
+               <Text color={COLORS.success} fontSize={11}>Processing...</Text>
+            ) : isQueued ? (
+               <Text color={COLORS.warning} fontSize={11}>Queued...</Text>
             ) : (
-              <Text color={COLORS.textMuted} fontSize={11}>Click to generate</Text>
+              <Text color={COLORS.textMuted} fontSize={11}>Click to queue generation</Text>
             )}
           </>
         ) : null}
@@ -160,7 +183,19 @@ function Photo3DViewsPanel({
   onConvert = () => {},
   onSelect = () => {},
   position = [1.5, 0, 0], // Right side of photo
+  queue = [],
+  processingItem = null,
+  photoId = null
 }) {
+  // Helper to check if a specific model for THIS photo is in queue
+  const getQueueState = (modelKey) => {
+      if (!photoId) return { isQueued: false, isProcessing: false };
+      
+      const isProcessing = processingItem && processingItem.id === photoId && processingItem.modelKey === modelKey;
+      const isQueued = queue.some(item => item.id === photoId && item.modelKey === modelKey);
+      
+      return { isQueued, isProcessing };
+  };
   // Group options by type
   const depthOptions = viewOptions.filter(opt => opt.type === 'depth');
   const splatOptions = viewOptions.filter(opt => opt.type === 'splat');
@@ -234,6 +269,7 @@ function Photo3DViewsPanel({
                       onRemove={onRemove}
                       onConvert={onConvert}
                       onSelect={onSelect}
+                      queueState={getQueueState(viewOption.key)}
                     />
                   ))}
                 </Container>
@@ -254,6 +290,7 @@ function Photo3DViewsPanel({
                       onRemove={onRemove}
                       onConvert={onConvert}
                       onSelect={onSelect}
+                      queueState={getQueueState(viewOption.key)}
                     />
                   ))}
                 </Container>

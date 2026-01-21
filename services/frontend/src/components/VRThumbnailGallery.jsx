@@ -22,6 +22,7 @@ import styles from './gallery/galleryStyles';
 
 import { usePhotoViewerAnimation } from '../hooks/usePhotoViewerAnimation';
 import { usePhoto3DManager } from '../hooks/usePhoto3DManager';
+import { use3DGenerationQueue } from '../hooks/use3DGenerationQueue';
 import { generateAsset, generateDepthWithModel, getPhotoFiles, deletePhotoFile, getAIModels, getSettings, convertPlyToKsplat, getImmichBucket } from '../services/api';
 
 
@@ -29,11 +30,13 @@ import { generateAsset, generateDepthWithModel, getPhotoFiles, deletePhotoFile, 
  * Wrapper component that uses the usePhoto3DManager hook
  * to provide viewOptions to the Photo3DViewsPanel presentation component
  */
-function Photo3DViewsPanelWrapper({ photoId, photoFiles, availableModels, onGenerate, onRemove, onSelect, onConvert, activeModel, position }) {
+function Photo3DViewsPanelWrapper({ photoId, photoFiles, availableModels, onGenerate, onRemove, onSelect, onConvert, activeModel, position, queue, processingItem }) {
   const { viewOptions } = usePhoto3DManager({
     generatedFiles: photoFiles,
     availableModels,
     photoId,
+    // We could pass queue info to manager if we want it to handle status logic
+    // But for now, let's play safe and handle it in the Panel or pass it through
   });
   
   return (
@@ -45,6 +48,9 @@ function Photo3DViewsPanelWrapper({ photoId, photoFiles, availableModels, onGene
       onSelect={onSelect}
       onConvert={onConvert}
       position={position}
+      queue={queue}
+      processingItem={processingItem}
+      photoId={photoId}
     />
   );
 }
@@ -101,6 +107,109 @@ const FilterToggleButton = ({ isFiltered, onClick }) => (
     </Root>
   </group>
 );
+
+
+// Selection Panel (3D UI)
+const SelectionPanel = ({ 
+    selectionMode, 
+    toggleSelectionMode, 
+    selectedCount, 
+    onGenerate, 
+    onClear,
+    queueStatus,
+    settingsOpen
+}) => {
+   if (settingsOpen) return null;
+
+   return (
+    <group position={[-2.8, 1.4, -2.5]} rotation={[0, 0.3, 0]}>
+      <Root pixelSize={0.005} anchorX="center" anchorY="center" flexDirection="column" gap={10}>
+        {/* Toggle Mode Button */}
+        <Container
+          width={220}
+          height={50}
+          backgroundColor={selectionMode ? "#10B981" : "#374151"}
+          backgroundOpacity={0.9}
+          hover={{ backgroundColor: selectionMode ? "#059669" : "#4B5563" }}
+          alignItems="center"
+          justifyContent="center"
+          borderRadius={25}
+          onClick={toggleSelectionMode}
+          cursor="pointer"
+          borderWidth={2}
+          borderColor="#4B5563"
+        >
+           <Text color="white" fontSize={18} fontWeight="bold">
+              {selectionMode ? "Selection Mode ON" : "Select Photos"}
+           </Text>
+        </Container>
+
+        {/* Actions (visible when mode is ON) */}
+        {selectionMode && (
+           <Container flexDirection="column" gap={8} width={220} padding={12} backgroundColor="rgba(0,0,0,0.8)" borderRadius={16}>
+              <Text color="white" fontSize={16} textAlign="center">
+                 Selected: {selectedCount}
+              </Text>
+              
+              {selectedCount > 0 && (
+                <>
+                  <Container 
+                      height={40} 
+                      width="100%" 
+                      backgroundColor="#3B82F6" 
+                      hover={{ backgroundColor: "#2563EB" }}
+                      borderRadius={8}
+                      alignItems="center"
+                      justifyContent="center"
+                      onClick={onGenerate}
+                      cursor="pointer"
+                  >
+                      <Text color="white" fontSize={16}>Queue SHARP</Text>
+                  </Container>
+                  
+                  <Container 
+                      height={30} 
+                      width="100%" 
+                      backgroundColor="#EF4444" 
+                      hover={{ backgroundColor: "#DC2626" }}
+                      borderRadius={8}
+                      alignItems="center"
+                      justifyContent="center"
+                      onClick={onClear}
+                      cursor="pointer"
+                  >
+                      <Text color="white" fontSize={14}>Clear Selection</Text>
+                  </Container>
+                </>
+              )}
+           </Container>
+        )}
+        
+        {/* Queue Status */}
+        {queueStatus && queueStatus.total > 0 && (
+             <Container 
+                width={220} 
+                padding={12} 
+                backgroundColor="#1F2937" 
+                borderRadius={12}
+                borderWidth={1}
+                borderColor="#3B82F6"
+                flexDirection="column"
+                alignItems="center"
+             >
+                 <Text color="#3B82F6" fontSize={14} fontWeight="bold">Processing Queue</Text>
+                 <Text color="white" fontSize={12} marginTop={4}>
+                     Completed: {queueStatus.processed} / {queueStatus.total}
+                 </Text>
+                 {queueStatus.isProcessing && (
+                     <Text color="#10B981" fontSize={12} marginTop={2}>Processing...</Text>
+                 )}
+             </Container>
+        )}
+      </Root>
+    </group>
+  );
+};
 
 function ViewerItem({ photo, index, selectedIndex, onSelect }) {
   const isSelected = index === selectedIndex;
@@ -371,6 +480,25 @@ function VRThumbnailGallery({
   });
   const [splatCount, setSplatCount] = useState(0);
 
+
+
+  // Define completion handler for queue
+  const handleQueueCompletion = useCallback((data) => {
+      // If the completed item is the currently selected photo, refresh its files
+      if (selectedPhotoId && data.id === selectedPhotoId && data.success) {
+          console.log('[VRThumbnailGallery] Current photo processed, refreshing files...');
+          getPhotoFiles(selectedPhotoId)
+            .then(res => setPhotoFiles(res.files || []))
+            .catch(err => console.warn('Failed to refresh files:', err));
+      }
+  }, [selectedPhotoId]);
+
+  // Queue & Selection State
+  // Pass the completion handler to the hook
+  const { addToQueue, queueStatus, queue, processingItem } = use3DGenerationQueue(handleQueueCompletion);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedPhotos, setSelectedPhotos] = useState(new Set());
+
   // DERIVE PHOTOS - If propPhotos is provided (List Mode), use it. Otherwise derive from Timeline.
   const photos = useMemo(() => {
      if (propPhotos) return propPhotos;
@@ -492,50 +620,35 @@ function VRThumbnailGallery({
       .catch(err => console.warn('Failed to fetch AI models:', err));
   }, [selectedPhotoId]);
   
-  // Handle generate asset
+  // Handle generate asset (Modified to use Queue)
   const handleGenerateDepth = useCallback(async (modelKey) => {
-    if (!selectedPhotoId || generatingRef.current) return;
-    
-    const existingFile = photoFiles.find(f => f.modelKey === modelKey);
-    if (existingFile) return;
-    
-    generatingRef.current = true;
-    setGeneratingModel(modelKey);
-    
-    try {
-      if (modelKey === 'ksplat') {
-        const response = await fetch(`/api/assets/${selectedPhotoId}/convert`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ from: 'ply', to: 'ksplat' })
-        });
-        if (!response.ok) throw new Error(`Conversion failed`);
-        const data = await getPhotoFiles(selectedPhotoId);
-        setPhotoFiles(data.files || []);
+    console.log('[VRThumbnailGallery] handleGenerateDepth called with:', modelKey);
+    if (!selectedPhotoId) {
+        console.warn('[VRThumbnailGallery] No selected photo ID');
         return;
-      }
-      
-      const model = availableModels.find(m => m.key === modelKey);
-      if (!model) return;
-      
-      const assetType = model.type || 'depth';
-      const blob = await generateAsset(selectedPhotoId, assetType, modelKey);
-      
-      if (assetType === 'depth') {
-        const url = URL.createObjectURL(blob);
-        setDepthCache(prev => ({ ...prev, [selectedPhotoId]: url }));
-        setActiveDepthModel(modelKey);
-      }
-      
-      const data = await getPhotoFiles(selectedPhotoId);
-      setPhotoFiles(data.files || []);
-    } catch (err) {
-      console.error('Failed to generate asset:', err);
-    } finally {
-      generatingRef.current = false;
-      setGeneratingModel(null);
     }
-  }, [selectedPhotoId, availableModels, photoFiles]);
+    
+    // Add to Queue instead of immediate generation
+    // We need to look up the type from availableModels
+    console.log('[VRThumbnailGallery] Available models:', availableModels);
+    const model = availableModels.find(m => m.key === modelKey);
+    
+    if (!model && modelKey !== 'ksplat') {
+         console.warn('[VRThumbnailGallery] Model not found and not ksplat:', modelKey);
+         return;
+    }
+    
+    const type = (modelKey === 'ksplat') ? 'splat' : (model ? (model.type || 'depth') : 'depth');
+    console.log('[VRThumbnailGallery] Determined type:', type);
+
+    addToQueue({
+        id: selectedPhotoId,
+        modelKey,
+        type
+    });
+  }, [selectedPhotoId, availableModels, addToQueue]);
+    
+
   
   // Handle remove file
   const handleRemoveFile = useCallback(async (modelKey) => {
@@ -850,13 +963,34 @@ function VRThumbnailGallery({
 
 
 
-  // Handle Photo Selection (Enter Viewer)
+  // Handle Photo Selection (Enter Viewer OR Toggle Selection)
   const handleSelect = useCallback((photo, position, rotation) => {
-    // If not already selected, select it
-    if (selectedPhotoId !== photo.id) {
-       setSelectedPhotoId(photo.id);
+    if (selectionMode) {
+        setSelectedPhotos(prev => {
+            const next = new Set(prev);
+            if (next.has(photo.id)) next.delete(photo.id);
+            else next.add(photo.id);
+            return next;
+        });
+    } else {
+        // If not already selected, select it (Enter Viewer)
+        if (selectedPhotoId !== photo.id) {
+           setSelectedPhotoId(photo.id);
+        }
     }
-  }, [selectedPhotoId]);
+  }, [selectedPhotoId, selectionMode]);
+
+  // Handle Multi-Selection Generation
+  const handleGenerateSelected = useCallback(() => {
+      const items = Array.from(selectedPhotos).map(id => ({
+          id,
+          modelKey: 'sharp', // Default to SHARP as requested
+          type: 'splat'
+      }));
+      addToQueue(items);
+      setSelectedPhotos(new Set());
+      setSelectionMode(false);
+  }, [selectedPhotos, addToQueue]);
 
   // Handle Close Viewer
   const handleCloseViewer = useCallback(() => {
@@ -1076,6 +1210,17 @@ function VRThumbnailGallery({
                     isFiltered={filterMode === 'splats'}
                     onClick={onToggleFilter}
                 />
+
+                {/* Selection Panel (Left Side, above Filter) */}
+                <SelectionPanel 
+                    selectionMode={selectionMode}
+                    toggleSelectionMode={() => setSelectionMode(prev => !prev)}
+                    selectedCount={selectedPhotos.size}
+                    onGenerate={handleGenerateSelected}
+                    onClear={() => { setSelectedPhotos(new Set()); setSelectionMode(false); }}
+                    queueStatus={queueStatus}
+                    settingsOpen={settingsOpen}
+                />
             </>
           )}
           
@@ -1095,6 +1240,8 @@ function VRThumbnailGallery({
                                 scrollY={scrollY - bucket.y}
                                 disableVerticalShift={true}
                                 depthCache={depthCache}
+                                selectionMode={selectionMode}
+                                selectedPhotos={selectedPhotos}
                             />
                         ) : (
                             <SkeletonGrid 
@@ -1171,6 +1318,8 @@ function VRThumbnailGallery({
                   onSelect={handleSelectDepth}
                   onConvert={handleConvert}
                   position={[2.5, 1.6, -settings.wallDistance]}
+                  queue={queue}
+                  processingItem={processingItem}
                 />
              </group>
           )}

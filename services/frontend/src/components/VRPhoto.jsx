@@ -220,7 +220,9 @@ function VRPhoto({
   enableDepth = false,
   useSimpleParallax = false,  // New prop for performance mode
   opacity = 1.0,
-  loadFullQuality = false // New prop to trigger full quality load
+  loadFullQuality = false, // New prop to trigger full quality load
+  isSelected = false,
+  selectionMode = false
 }) {
   const [hovered, setHovered] = useState(false);
   const [imageUrl, setImageUrl] = useState(null);
@@ -370,11 +372,15 @@ function VRPhoto({
         <PlaceholderMesh hovered={hovered} width={initialDimensions.width} height={initialDimensions.height} />
       )}
       
-      {/* Hover glow effect */}
-      {hovered && (
+      {/* Hover/Selected glow effect */}
+      {(hovered || isSelected) && (
         <mesh position={[0, 0, -0.02]}>
           <planeGeometry args={[initialDimensions.width + 0.05, initialDimensions.height + 0.05]} />
-          <meshBasicMaterial color="#ffffff" transparent opacity={0.2} />
+          <meshBasicMaterial 
+            color={isSelected ? '#10B981' : '#ffffff'} 
+            transparent 
+            opacity={isSelected ? 0.6 : 0.2} 
+          />
         </mesh>
       )}
     </group>

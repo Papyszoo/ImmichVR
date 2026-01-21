@@ -44,6 +44,10 @@ export const modelSocket = {
       getSocket().emit('model:download', { modelKey });
   },
 
+  generate: (id, type, modelKey) => {
+      getSocket().emit('model:generate', { id, type, modelKey });
+  },
+
   onStatusChange: (callback) => {
     getSocket().on('model:status', callback);
     return () => getSocket().off('model:status', callback);
@@ -52,5 +56,15 @@ export const modelSocket = {
   onError: (callback) => {
       getSocket().on('model:error', callback);
       return () => getSocket().off('model:error', callback);
+  },
+
+  onGenerationProgress: (callback) => {
+      getSocket().on('model:generation-progress', callback);
+      return () => getSocket().off('model:generation-progress', callback);
+  },
+
+  onGenerationComplete: (callback) => {
+      getSocket().on('model:generation-complete', callback);
+      return () => getSocket().off('model:generation-complete', callback);
   }
 };

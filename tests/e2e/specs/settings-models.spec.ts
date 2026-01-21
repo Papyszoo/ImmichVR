@@ -20,14 +20,14 @@ test.describe('Settings and Model Management', () => {
 
   test('should update settings', async ({ request }) => {
     // Get current settings
-    const currentResponse = await request.get('${BASE_URL}/api/settings', {
+    const currentResponse = await request.get(`${BASE_URL}/api/settings`, {
       ignoreHTTPSErrors: true
     });
     const currentSettings = await currentResponse.json();
     
     // Update settings
     const newAutoGenerate = !currentSettings.autoGenerateOnEnter;
-    const updateResponse = await request.put('${BASE_URL}/api/settings', {
+    const updateResponse = await request.put(`${BASE_URL}/api/settings`, {
       ignoreHTTPSErrors: true,
       data: {
         autoGenerateOnEnter: newAutoGenerate
@@ -40,7 +40,7 @@ test.describe('Settings and Model Management', () => {
     expect(updatedData.autoGenerateOnEnter).toBe(newAutoGenerate);
     
     // Restore original settings
-    await request.put('${BASE_URL}/api/settings', {
+    await request.put(`${BASE_URL}/api/settings`, {
       ignoreHTTPSErrors: true,
       data: {
         autoGenerateOnEnter: currentSettings.autoGenerateOnEnter
@@ -49,7 +49,7 @@ test.describe('Settings and Model Management', () => {
   });
 
   test('should reject invalid model in settings', async ({ request }) => {
-    const response = await request.put('${BASE_URL}/api/settings', {
+    const response = await request.put(`${BASE_URL}/api/settings`, {
       ignoreHTTPSErrors: true,
       data: {
         defaultDepthModel: 'invalid-model'
@@ -63,7 +63,7 @@ test.describe('Settings and Model Management', () => {
   });
 
   test('should fetch AI models list', async ({ request }) => {
-    const response = await request.get('${BASE_URL}/api/settings/models', {
+    const response = await request.get(`${BASE_URL}/api/settings/models`, {
       ignoreHTTPSErrors: true
     });
     
@@ -84,7 +84,7 @@ test.describe('Settings and Model Management', () => {
   });
 
   test('should fetch AI models from AI service', async ({ request }) => {
-    const response = await request.get('${BASE_URL}/api/settings/models/ai', {
+    const response = await request.get(`${BASE_URL}/api/settings/models/ai`, {
       ignoreHTTPSErrors: true
     });
     
@@ -97,7 +97,7 @@ test.describe('Settings and Model Management', () => {
   });
 
   test('should sync models with AI service', async ({ request }) => {
-    const response = await request.post('${BASE_URL}/api/settings/models/sync', {
+    const response = await request.post(`${BASE_URL}/api/settings/models/sync`, {
       ignoreHTTPSErrors: true
     });
     
@@ -111,7 +111,7 @@ test.describe('Settings and Model Management', () => {
 
   test('should handle model lifecycle - load model', async ({ request }) => {
     // Get available models
-    const modelsResponse = await request.get('${BASE_URL}/api/settings/models', {
+    const modelsResponse = await request.get(`${BASE_URL}/api/settings/models`, {
       ignoreHTTPSErrors: true
     });
     const modelsData = await modelsResponse.json();
@@ -140,7 +140,7 @@ test.describe('Settings and Model Management', () => {
 
   test('should handle model lifecycle - unload model', async ({ request }) => {
     // Get loaded models
-    const modelsResponse = await request.get('${BASE_URL}/api/settings/models', {
+    const modelsResponse = await request.get(`${BASE_URL}/api/settings/models`, {
       ignoreHTTPSErrors: true
     });
     const modelsData = await modelsResponse.json();
@@ -165,7 +165,7 @@ test.describe('Settings and Model Management', () => {
 
   test('should handle downloading a model', async ({ request }) => {
     // Get not-downloaded models
-    const modelsResponse = await request.get('${BASE_URL}/api/settings/models', {
+    const modelsResponse = await request.get(`${BASE_URL}/api/settings/models`, {
       ignoreHTTPSErrors: true
     });
     const modelsData = await modelsResponse.json();

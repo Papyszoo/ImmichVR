@@ -1,12 +1,12 @@
 import { test, expect } from '@playwright/test';
 
 // Use baseURL from playwright.config.ts
-const BASE_URL = process.env.BASE_URL || '${BASE_URL}';
+const BASE_URL = process.env.BASE_URL || 'https://localhost:21371';
 
 
 test.describe('Queue Management', () => {
   test('should fetch queue summary', async ({ request }) => {
-    const response = await request.get('${BASE_URL}/api/queue/summary', {
+    const response = await request.get(`${BASE_URL}/api/queue/summary`, {
       ignoreHTTPSErrors: true
     });
     
@@ -25,7 +25,7 @@ test.describe('Queue Management', () => {
   });
 
   test('should fetch queue statistics', async ({ request }) => {
-    const response = await request.get('${BASE_URL}/api/queue/stats', {
+    const response = await request.get(`${BASE_URL}/api/queue/stats`, {
       ignoreHTTPSErrors: true
     });
     
@@ -49,7 +49,7 @@ test.describe('Queue Management', () => {
   });
 
   test('should fetch queue items with pagination', async ({ request }) => {
-    const response = await request.get('${BASE_URL}/api/queue/items?limit=10&offset=0', {
+    const response = await request.get(`${BASE_URL}/api/queue/items?limit=10&offset=0`, {
       ignoreHTTPSErrors: true
     });
     
@@ -73,7 +73,7 @@ test.describe('Queue Management', () => {
   });
 
   test('should filter queue items by status', async ({ request }) => {
-    const response = await request.get('${BASE_URL}/api/queue/items?status=pending', {
+    const response = await request.get(`${BASE_URL}/api/queue/items?status=pending`, {
       ignoreHTTPSErrors: true
     });
     
@@ -89,7 +89,7 @@ test.describe('Queue Management', () => {
   });
 
   test('should get worker status', async ({ request }) => {
-    const response = await request.get('${BASE_URL}/api/queue/worker/status', {
+    const response = await request.get(`${BASE_URL}/api/queue/worker/status`, {
       ignoreHTTPSErrors: true
     });
     
@@ -103,14 +103,14 @@ test.describe('Queue Management', () => {
 
   test('should start and stop worker', async ({ request }) => {
     // Get initial status
-    const statusResponse = await request.get('${BASE_URL}/api/queue/worker/status', {
+    const statusResponse = await request.get(`${BASE_URL}/api/queue/worker/status`, {
       ignoreHTTPSErrors: true
     });
     const initialStatus = await statusResponse.json();
     
     if (!initialStatus.isRunning) {
       // Start worker
-      const startResponse = await request.post('${BASE_URL}/api/queue/worker/start', {
+      const startResponse = await request.post(`${BASE_URL}/api/queue/worker/start`, {
         ignoreHTTPSErrors: true
       });
       
@@ -121,14 +121,14 @@ test.describe('Queue Management', () => {
       expect(startData.message).toContain('started');
       
       // Verify it's running
-      const runningStatus = await request.get('${BASE_URL}/api/queue/worker/status', {
+      const runningStatus = await request.get(`${BASE_URL}/api/queue/worker/status`, {
         ignoreHTTPSErrors: true
       });
       const runningData = await runningStatus.json();
       expect(runningData.isRunning).toBe(true);
       
       // Stop worker
-      const stopResponse = await request.post('${BASE_URL}/api/queue/worker/stop', {
+      const stopResponse = await request.post(`${BASE_URL}/api/queue/worker/stop`, {
         ignoreHTTPSErrors: true
       });
       
@@ -139,17 +139,17 @@ test.describe('Queue Management', () => {
       expect(stopData.message).toContain('stopped');
     } else {
       // If already running, just stop and restart
-      await request.post('${BASE_URL}/api/queue/worker/stop', {
+      await request.post(`${BASE_URL}/api/queue/worker/stop`, {
         ignoreHTTPSErrors: true
       });
       
-      const startResponse = await request.post('${BASE_URL}/api/queue/worker/start', {
+      const startResponse = await request.post(`${BASE_URL}/api/queue/worker/start`, {
         ignoreHTTPSErrors: true
       });
       expect(startResponse.status()).toBe(200);
       
       // Stop again
-      await request.post('${BASE_URL}/api/queue/worker/stop', {
+      await request.post(`${BASE_URL}/api/queue/worker/stop`, {
         ignoreHTTPSErrors: true
       });
     }
@@ -157,19 +157,19 @@ test.describe('Queue Management', () => {
 
   test('should handle starting already running worker', async ({ request }) => {
     // Ensure worker is running
-    const statusResponse = await request.get('${BASE_URL}/api/queue/worker/status', {
+    const statusResponse = await request.get(`${BASE_URL}/api/queue/worker/status`, {
       ignoreHTTPSErrors: true
     });
     const status = await statusResponse.json();
     
     if (!status.isRunning) {
-      await request.post('${BASE_URL}/api/queue/worker/start', {
+      await request.post(`${BASE_URL}/api/queue/worker/start`, {
         ignoreHTTPSErrors: true
       });
     }
     
     // Try to start again
-    const response = await request.post('${BASE_URL}/api/queue/worker/start', {
+    const response = await request.post(`${BASE_URL}/api/queue/worker/start`, {
       ignoreHTTPSErrors: true
     });
     
@@ -179,26 +179,26 @@ test.describe('Queue Management', () => {
     expect(data.error).toBe('Worker already running');
     
     // Clean up - stop worker
-    await request.post('${BASE_URL}/api/queue/worker/stop', {
+    await request.post(`${BASE_URL}/api/queue/worker/stop`, {
       ignoreHTTPSErrors: true
     });
   });
 
   test('should handle stopping already stopped worker', async ({ request }) => {
     // Ensure worker is stopped
-    const statusResponse = await request.get('${BASE_URL}/api/queue/worker/status', {
+    const statusResponse = await request.get(`${BASE_URL}/api/queue/worker/status`, {
       ignoreHTTPSErrors: true
     });
     const status = await statusResponse.json();
     
     if (status.isRunning) {
-      await request.post('${BASE_URL}/api/queue/worker/stop', {
+      await request.post(`${BASE_URL}/api/queue/worker/stop`, {
         ignoreHTTPSErrors: true
       });
     }
     
     // Try to stop again
-    const response = await request.post('${BASE_URL}/api/queue/worker/stop', {
+    const response = await request.post(`${BASE_URL}/api/queue/worker/stop`, {
       ignoreHTTPSErrors: true
     });
     
@@ -209,7 +209,7 @@ test.describe('Queue Management', () => {
   });
 
   test('should handle 404 for non-existent queue item', async ({ request }) => {
-    const response = await request.get('${BASE_URL}/api/queue/items/non-existent-id', {
+    const response = await request.get(`${BASE_URL}/api/queue/items/non-existent-id`, {
       ignoreHTTPSErrors: true
     });
     
@@ -222,7 +222,7 @@ test.describe('Queue Management', () => {
   test('should handle cancel queue item', async ({ request }) => {
     // This test depends on having a queue item
     // For now, we test the error case
-    const response = await request.post('${BASE_URL}/api/queue/items/fake-id/cancel', {
+    const response = await request.post(`${BASE_URL}/api/queue/items/fake-id/cancel`, {
       ignoreHTTPSErrors: true
     });
     
@@ -233,7 +233,7 @@ test.describe('Queue Management', () => {
   test('should handle retry queue item', async ({ request }) => {
     // This test depends on having a failed queue item
     // For now, we test the error case
-    const response = await request.post('${BASE_URL}/api/queue/items/fake-id/retry', {
+    const response = await request.post(`${BASE_URL}/api/queue/items/fake-id/retry`, {
       ignoreHTTPSErrors: true
     });
     

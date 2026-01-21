@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 // Use baseURL from playwright.config.ts
-const BASE_URL = process.env.BASE_URL || '${BASE_URL}';
+const BASE_URL = process.env.BASE_URL || 'https://localhost:21371';
 
 
 test.describe('Asset Operations', () => {
@@ -10,7 +10,7 @@ test.describe('Asset Operations', () => {
 
   test.beforeAll(async ({ request }) => {
     // Get a test photo to work with
-    const photosResponse = await request.get('${BASE_URL}/api/immich/photos?size=1', {
+    const photosResponse = await request.get(`${BASE_URL}/api/immich/photos?size=1`, {
       ignoreHTTPSErrors: true
     });
     const photosData = await photosResponse.json();
@@ -153,7 +153,7 @@ test.describe('Asset Operations', () => {
 
   test('should handle 404 for non-existent file download', async ({ request }) => {
     const response = await request.get(
-      '${BASE_URL}/api/assets/fake-id/files/fake-file-id/download',
+      `${BASE_URL}/api/assets/fake-id/files/fake-file-id/download`,
       { ignoreHTTPSErrors: true }
     );
     
@@ -165,7 +165,7 @@ test.describe('Asset Operations', () => {
 
   test('should handle 404 for non-existent file deletion', async ({ request }) => {
     const response = await request.delete(
-      '${BASE_URL}/api/assets/fake-id/files/fake-file-id',
+      `${BASE_URL}/api/assets/fake-id/files/fake-file-id`,
       { ignoreHTTPSErrors: true }
     );
     

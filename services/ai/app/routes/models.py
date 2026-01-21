@@ -182,6 +182,23 @@ def download_model(model_key: str):
     Returns:
         JSON with success status
     """
+    if model_key == "sharp":
+        try:
+            from ..models.sharp_model import sharp_model
+            success = sharp_model.download()
+            if success:
+                return jsonify({
+                    "success": True,
+                    "message": "Model 'sharp' downloaded successfully"
+                })
+        except Exception as e:
+            logger.error(f"Error downloading model sharp: {str(e)}")
+            return jsonify({
+                "success": False,
+                "error": "Model download error",
+                "message": str(e)
+            }), 500
+
     if model_key not in Config.AVAILABLE_MODELS:
         return jsonify({
             "error": "Unknown model",

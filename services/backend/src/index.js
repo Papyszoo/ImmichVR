@@ -21,12 +21,18 @@ fs.mkdir(uploadDir, { recursive: true }).catch(err => {
 });
 
 // Start server
-app.listen(PORT, async () => {
+const server = app.listen(PORT, async () => {
   console.log(`Backend service running on port ${PORT}`);
   
   // Initialize DB Schema
   await dbInit.ensureSchema();
 });
+
+// Initialize Socket.IO
+const { modelManager } = require('./services');
+const SocketManager = require('./services/socketManager');
+const socketManager = new SocketManager(server, modelManager);
+console.log('Socket Manager initialized');
 
 // Build info
 console.log('ImmichVR Backend Service v1.0.0 (Refactored)');

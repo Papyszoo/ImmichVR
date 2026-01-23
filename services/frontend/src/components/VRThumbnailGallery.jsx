@@ -464,6 +464,8 @@ function VRThumbnailGallery({
   const [isConverting, setIsConverting] = useState(false);
   const selectingRef = useRef(false);
   const [activeDepthModel, setActiveDepthModel] = useState(null);
+  const desiredViewTypeRef = useRef(null); // Track desired view type for navigation preservation
+  const photoFilesPhotoIdRef = useRef(null); // Track which photo's files are in photoFiles state
   const [splatUrl, setSplatUrl] = useState(null);
   const [splatFormat, setSplatFormat] = useState('ply');
   
@@ -588,20 +590,48 @@ function VRThumbnailGallery({
   useEffect(() => {
     if (!selectedPhotoId) {
       setPhotoFiles([]);
+      photoFilesPhotoIdRef.current = null;
       return;
     }
     
-    setActiveDepthModel(null);
-    if (splatUrl) {
-      URL.revokeObjectURL(splatUrl);
-      setSplatUrl(null);
+    // Clear photoFiles immediately to prevent auto-select from using stale data
+    setPhotoFiles([]);
+    photoFilesPhotoIdRef.current = null; // Mark that photoFiles is now empty/invalid
+    
+    // Only reset active model if we're not preserving a view type
+    // This prevents flashing the original photo when navigating between photos with the same view type
+    if (!desiredViewTypeRef.current) {
+      setActiveDepthModel(null);
+      
+      // Also clear splatUrl only when not preserving
+      if (splatUrl) {
+        URL.revokeObjectURL(splatUrl);
+        setSplatUrl(null);
+      }
+    } else {
+      console.log(`[Fetch] Preserving visual state for view type: ${desiredViewTypeRef.current}`);
+      // Keep the current splatUrl/activeDepthModel visible until new one loads
+      // This creates a smoother transition without flashing the original photo
     }
     
+    // Track which photo we're fetching for to prevent race conditions
+    const currentPhotoId = selectedPhotoId;
+    console.log(`[Fetch] Starting fetch for photo ${currentPhotoId}`);
+    
     getPhotoFiles(selectedPhotoId)
-      .then(data => setPhotoFiles(data.files || []))
+      .then(data => {
+        // Only apply the results if we're still on the same photo
+        if (currentPhotoId === selectedPhotoId) {
+          console.log(`[Fetch] Received ${data.files?.length || 0} files for photo ${currentPhotoId}`);
+          setPhotoFiles(data.files || []);
+          photoFilesPhotoIdRef.current = currentPhotoId; // Mark which photo these files belong to
+        } else {
+          console.log(`[Fetch] Ignoring stale fetch result for photo ${currentPhotoId} (current: ${selectedPhotoId})`);
+        }
+      })
       .catch(err => console.warn('Failed to fetch photo files:', err));
   }, [selectedPhotoId]);
-
+  
   // Fetch available models
   useEffect(() => {
     getAIModels()
@@ -684,12 +714,15 @@ function VRThumbnailGallery({
   
   // Handle select depth/splat
   const handleSelectDepth = useCallback(async (modelKey) => {
+    console.log(`[handleSelectDepth] Called with modelKey: ${modelKey}, selectedPhotoId: ${selectedPhotoId}, photoFiles count: ${photoFiles.length}`);
+    
     if (!selectedPhotoId || selectingRef.current) return;
     
     selectingRef.current = true;
     
     try {
       if (modelKey === 'normal') {
+        console.log('[handleSelectDepth] Switching to normal view');
         if (splatUrl) {
           URL.revokeObjectURL(splatUrl);
           setSplatUrl(null);
@@ -715,9 +748,12 @@ function VRThumbnailGallery({
         file = photoFiles.find(f => f.modelKey === modelKey);
       }
       
+      console.log(`[handleSelectDepth] Found file:`, file);
+      
       if (!file) {
         // Compatibility: if no file but modelKey is 'small'/'medium'/'large', it might be legacy depth
         // But we rely on file list now.
+        console.log(`[handleSelectDepth] No file found for modelKey: ${modelKey}`);
         return;
       }
       
@@ -728,23 +764,32 @@ function VRThumbnailGallery({
         }
         
         try {
-          const response = await fetch(`/api/assets/${selectedPhotoId}/files/${file.id}/download`);
+          const downloadUrl = `/api/assets/${selectedPhotoId}/files/${file.id}/download`;
+          console.log(`[handleSelectDepth] Downloading depth file from: ${downloadUrl}`);
+          const response = await fetch(downloadUrl);
           if (response.ok) {
             const blob = await response.blob();
             const url = URL.createObjectURL(blob);
             setDepthCache(prev => ({ ...prev, [selectedPhotoId]: url }));
             setActiveDepthModel(modelKey);
+            console.log(`[handleSelectDepth] Depth loaded successfully for photo ${selectedPhotoId}`);
           }
-        } catch (err) { console.error(err); }
+        } catch (err) { console.error('[handleSelectDepth] Depth load error:', err); }
       } else if (file.type === 'splat') {
         try {
-          const response = await fetch(`/api/assets/${selectedPhotoId}/files/${file.id}/download`);
+          const downloadUrl = `/api/assets/${selectedPhotoId}/files/${file.id}/download`;
+          console.log(`[handleSelectDepth] Downloading splat file from: ${downloadUrl}`);
+          const response = await fetch(downloadUrl);
           if (response.ok) {
             const blob = await response.blob();
-            if (blob.size === 0) return;
+            if (blob.size === 0) {
+              console.log('[handleSelectDepth] Splat file is empty');
+              return;
+            }
             
             if (splatUrl) URL.revokeObjectURL(splatUrl);
             const url = URL.createObjectURL(blob);
+            console.log(`[handleSelectDepth] Splat loaded successfully for photo ${selectedPhotoId}, format: ${file.format}, size: ${blob.size} bytes`);
             setSplatUrl(url);
             setSplatFormat(file.format || 'ply');
             setActiveDepthModel(modelKey);
@@ -755,12 +800,52 @@ function VRThumbnailGallery({
               return newCache;
             });
           }
-        } catch (err) { console.error(err); }
+        } catch (err) { console.error('[handleSelectDepth] Splat load error:', err); }
       }
     } finally {
       selectingRef.current = false;
     }
   }, [selectedPhotoId, photoFiles, splatUrl]);
+  
+  // Auto-select preserved view type after photo files are loaded
+  useEffect(() => {
+    if (!selectedPhotoId || !desiredViewTypeRef.current) return;
+    
+    // If photoFiles is still empty (loading), wait for it to populate
+    if (photoFiles.length === 0) return;
+    
+    // CRITICAL: Validate that photoFiles belong to the current photo
+    if (photoFilesPhotoIdRef.current !== selectedPhotoId) {
+      console.log(`[Auto-select] Skipping stale photoFiles (belong to ${photoFilesPhotoIdRef.current}, current: ${selectedPhotoId})`);
+      return;
+    }
+    
+    const desiredView = desiredViewTypeRef.current;
+    console.log(`[Auto-select] Checking view ${desiredView} for photo ${selectedPhotoId}, found ${photoFiles.length} files`);
+    console.log(`[Auto-select] Files belong to photo: ${photoFilesPhotoIdRef.current}`);
+    
+    desiredViewTypeRef.current = null; // Clear after processing
+    
+    // Check if the desired view is available for this photo
+    let file;
+    if (desiredView === 'ksplat') {
+      file = photoFiles.find(f => f.modelKey === 'sharp' && f.format === 'ksplat');
+    } else if (desiredView === 'sharp') {
+      file = photoFiles.find(f => f.modelKey === 'sharp' && f.format === 'ply');
+    } else if (desiredView !== 'normal') {
+      file = photoFiles.find(f => f.modelKey === desiredView);
+    }
+    
+    if (file || desiredView === 'normal') {
+      // View is available, select it
+      console.log(`[Auto-select] Preserving view type: ${desiredView} for photo ${selectedPhotoId}, file ID: ${file?.id}`);
+      handleSelectDepth(desiredView);
+    } else {
+      // View not available, default to normal photo
+      console.log(`[Auto-select] View type ${desiredView} not available for photo ${selectedPhotoId}, defaulting to normal photo`);
+      handleSelectDepth('normal');
+    }
+  }, [photoFiles, handleSelectDepth]); // Removed selectedPhotoId to prevent running with stale files
   
   // Handle KSPLAT conversion
   const handleConvert = useCallback(async (modelKey) => {
@@ -1002,17 +1087,29 @@ function VRThumbnailGallery({
     if (!selectedPhotoId) return;
     const index = photos.findIndex(p => p.id === selectedPhotoId);
     if (index < photos.length - 1) {
-       setSelectedPhotoId(photos[index + 1].id);
+       // Preserve the active view type when navigating
+       if (activeDepthModel) {
+         desiredViewTypeRef.current = activeDepthModel;
+       }
+       
+       const nextPhotoId = photos[index + 1].id;
+       setSelectedPhotoId(nextPhotoId);
     }
-  }, [selectedPhotoId, photos]);
+  }, [selectedPhotoId, photos, activeDepthModel]);
 
   const handlePrev = useCallback(() => {
     if (!selectedPhotoId) return;
     const index = photos.findIndex(p => p.id === selectedPhotoId);
     if (index > 0) {
-       setSelectedPhotoId(photos[index - 1].id);
+       // Preserve the active view type when navigating
+       if (activeDepthModel) {
+         desiredViewTypeRef.current = activeDepthModel;
+       }
+       
+       const prevPhotoId = photos[index - 1].id;
+       setSelectedPhotoId(prevPhotoId);
     }
-  }, [selectedPhotoId, photos]);
+  }, [selectedPhotoId, photos, activeDepthModel]);
 
 
   // Scroll interactions (only valid when viewer is closed)

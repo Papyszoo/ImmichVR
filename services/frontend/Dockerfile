@@ -2,9 +2,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package.json only (not lock file to avoid cross-platform native binary issues)
-COPY package.json ./
-RUN npm install --force
+# Copy package files
+COPY package.json package-lock.json ./
+RUN npm ci
 
 # Copy application code
 COPY . .

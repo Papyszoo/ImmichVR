@@ -2,9 +2,10 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package.json only (not lock file to avoid cross-platform native binary issues)
-COPY package.json ./
-RUN npm install --force
+# Copy package files for clean dependency installation
+# Use 'docker build --no-cache' or 'docker-compose build --no-cache' to ensure fresh build
+COPY package.json package-lock.json ./
+RUN npm ci
 
 # Copy application code
 COPY . .

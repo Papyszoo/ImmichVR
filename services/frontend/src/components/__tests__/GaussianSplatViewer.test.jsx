@@ -9,10 +9,11 @@ vi.mock('@sparkjsdev/spark', () => ({
     constructor() {
       this.position = { set: vi.fn() };
       this.rotation = { set: vi.fn() };
-      this.scale = { set: vi.fn() };
+      this.scale = { set: vi.fn(), setScalar: vi.fn() };
       this.dispose = vi.fn();
       this.material = {};
       this.maxStdDev = 3.0;
+      this.initialized = Promise.resolve();
     }
     load() {
       return Promise.resolve({

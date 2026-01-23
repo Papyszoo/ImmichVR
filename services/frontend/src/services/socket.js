@@ -66,5 +66,15 @@ export const modelSocket = {
   onGenerationComplete: (callback) => {
       getSocket().on('model:generation-complete', callback);
       return () => getSocket().off('model:generation-complete', callback);
+  },
+
+  // Queue Events
+  onQueueUpdate: (callback) => {
+      getSocket().on('queue:update', callback);
+      return () => getSocket().off('queue:update', callback);
+  },
+
+  getQueueStatus: () => {
+      getSocket().emit('queue:get-status');
   }
 };

@@ -18,6 +18,7 @@ router.get('/', async (req, res) => {
         id,
         default_depth_model,
         auto_generate_on_enter,
+        disable_auto_quality,
         created_at,
         updated_at
       FROM user_settings
@@ -27,9 +28,9 @@ router.get('/', async (req, res) => {
     // Create default settings if not exists
     if (result.rows.length === 0) {
       result = await pool.query(`
-        INSERT INTO user_settings (user_id, default_depth_model, auto_generate_on_enter)
-        VALUES (NULL, 'small', false)
-        RETURNING id, default_depth_model, auto_generate_on_enter, created_at, updated_at
+        INSERT INTO user_settings (user_id, default_depth_model, auto_generate_on_enter, disable_auto_quality)
+        VALUES (NULL, 'small', false, false)
+        RETURNING id, default_depth_model, auto_generate_on_enter, disable_auto_quality, created_at, updated_at
       `);
     }
     
@@ -38,6 +39,7 @@ router.get('/', async (req, res) => {
     res.json({
       defaultDepthModel: settings.default_depth_model,
       autoGenerateOnEnter: settings.auto_generate_on_enter,
+      disableAutoQuality: settings.disable_auto_quality,
       updatedAt: settings.updated_at,
     });
     
@@ -52,7 +54,7 @@ router.get('/', async (req, res) => {
  * Update user settings
  */
 router.put('/', async (req, res) => {
-  const { defaultDepthModel, autoGenerateOnEnter } = req.body;
+  const { defaultDepthModel, autoGenerateOnEnter, disableAutoQuality } = req.body;
   
   try {
     // Validate model key if provided
@@ -77,6 +79,11 @@ router.put('/', async (req, res) => {
       updates.push(`auto_generate_on_enter = $${paramIndex++}`);
       values.push(autoGenerateOnEnter);
     }
+
+    if (disableAutoQuality !== undefined) {
+      updates.push(`disable_auto_quality = $${paramIndex++}`);
+      values.push(disableAutoQuality);
+    }
     
     if (updates.length === 0) {
       return res.status(400).json({ error: 'No settings provided to update' });
@@ -87,7 +94,7 @@ router.put('/', async (req, res) => {
       UPDATE user_settings 
       SET ${updates.join(', ')}, updated_at = NOW()
       WHERE user_id IS NULL
-      RETURNING id, default_depth_model, auto_generate_on_enter, updated_at
+      RETURNING id, default_depth_model, auto_generate_on_enter, disable_auto_quality, updated_at
     `, values);
     
     let settings;
@@ -97,12 +104,13 @@ router.put('/', async (req, res) => {
     } else {
       // 2. If no row exists, INSERT new one
       const insertResult = await pool.query(`
-        INSERT INTO user_settings (user_id, default_depth_model, auto_generate_on_enter)
-        VALUES (NULL, $1, $2)
-        RETURNING id, default_depth_model, auto_generate_on_enter, updated_at
+        INSERT INTO user_settings (user_id, default_depth_model, auto_generate_on_enter, disable_auto_quality)
+        VALUES (NULL, $1, $2, $3)
+        RETURNING id, default_depth_model, auto_generate_on_enter, disable_auto_quality, updated_at
       `, [
         defaultDepthModel || 'small',
-        autoGenerateOnEnter !== undefined ? autoGenerateOnEnter : false
+        autoGenerateOnEnter !== undefined ? autoGenerateOnEnter : false,
+        disableAutoQuality !== undefined ? disableAutoQuality : false
       ]);
       settings = insertResult.rows[0];
     }
@@ -111,6 +119,7 @@ router.put('/', async (req, res) => {
       success: true,
       defaultDepthModel: settings.default_depth_model,
       autoGenerateOnEnter: settings.auto_generate_on_enter,
+      disableAutoQuality: settings.disable_auto_quality,
       updatedAt: settings.updated_at,
     });
     

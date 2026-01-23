@@ -19,72 +19,90 @@ class SocketManager {
     });
 
     this.modelManager = modelManager;
+    
+    // Setup Queue Manager
+    const { queueManager } = require('./index');
+    this.queueManager = queueManager;
+    this.queueManager.setSocketIO(this.io);
+    this.queueManager.setExecutor(this.executeGenerationJob.bind(this));
+
     this.setupSocketEvents();
     this.setupModelManagerEvents();
+  }
+  
+  /**
+   * Executor for QueueManager
+   * @param {Object} job - { id, type, modelKey, socketId }
+   */
+  async executeGenerationJob(job) {
+     const { id, type, modelKey, socketId } = job;
+     console.log(`[SocketManager] Executing queued job: ${id} (${type})`);
+     
+     try {
+          if (type === 'splat') {
+              await this.handleSplatGeneration(socketId, id, modelKey || 'sharp');
+          } else if (type === 'depth') {
+              await this.handleDepthGeneration(socketId, id, modelKey || 'small');
+          }
+      } catch (error) {
+          console.error(`[SocketManager] Job execution failed:`, error);
+          this.io.to(socketId).emit('model:error', { id, message: error.message });
+          this.io.to(socketId).emit('model:generation-complete', { id, success: false, error: error.message });
+      }
   }
 
   setupSocketEvents() {
     this.io.on('connection', (socket) => {
       console.log(`[Socket] Client connected: ${socket.id}`);
 
-      // Send initial state
+      // Send initial state & queue status
       this.sendCurrentState(socket);
+      socket.emit('queue:update', this.queueManager.getStatus());
 
       // --- Model Events Recieved from Client ---
 
+      // ... (Load/Unload/Download handlers remain same) ...
       // 1. Load Model
       socket.on('model:load', async (data) => {
         const { modelKey, trigger = 'manual', options = {} } = data;
         console.log(`[Socket] Request load: ${modelKey}`);
         try {
           await this.modelManager.ensureModelLoaded(modelKey, trigger, options);
-          // Success is broadcasted via modelManager event listener
         } catch (error) {
           socket.emit('model:error', { message: error.message });
         }
       });
-
-      // 2. Unload Model
+      
       socket.on('model:unload', async () => {
-        console.log(`[Socket] Request unload`);
-        try {
-          await this.modelManager.unloadModel();
-        } catch (error) {
-          socket.emit('model:error', { message: error.message });
-        }
+         try { await this.modelManager.unloadModel(); } 
+         catch (e) { socket.emit('model:error', { message: e.message }); }
       });
-
-      // 3. Download Model
+      
       socket.on('model:download', async (data) => {
-        const { modelKey } = data;
-        console.log(`[Socket] Request download: ${modelKey}`);
-        try {
-          // ModelManager will handle the call and emit status events
-          await this.modelManager.downloadModel(modelKey);
-        } catch (error) {
-          socket.emit('model:error', { message: error.message });
-        }
+         try { await this.modelManager.downloadModel(data.modelKey); }
+         catch (e) { socket.emit('model:error', { message: e.message }); }
       });
 
-      // 4. Generate Asset
+      // 4. Generate Asset -> ENQUEUE
       socket.on('model:generate', async (data) => {
           const { id, type, modelKey } = data;
-          console.log(`[Socket] Request generate for ${id}: ${type}/${modelKey}`);
+          console.log(`[Socket] Enqueuing generation for ${id}: ${type}/${modelKey}`);
           
-          try {
-              if (type === 'splat') {
-                  await this.handleSplatGeneration(socket, id, modelKey || 'sharp');
-              } else if (type === 'depth') {
-                  await this.handleDepthGeneration(socket, id, modelKey || 'small');
-              } else {
-                  socket.emit('model:error', { message: `Unknown generation type: ${type}` });
-              }
-          } catch (error) {
-              console.error(`[Socket] Generation failed:`, error);
-              socket.emit('model:error', { id, message: error.message });
-              // Also emit completion with failure so queue can proceed (if desired, or queue handles error)
-              socket.emit('model:generation-complete', { id, success: false, error: error.message });
-          }
+          this.queueManager.enqueue({
+              id,
+              type,
+              modelKey,
+              socketId: socket.id,
+              timestamp: Date.now()
+          });
+          
+          // Acknowledge queueing
+          socket.emit('model:generation-progress', { id, status: 'queued', progress: 0 });
+      });
+      
+      // 5. Get Queue Status 
+      socket.on('queue:get-status', () => {
+          socket.emit('queue:update', this.queueManager.getStatus());
       });
 
       socket.on('disconnect', () => {
@@ -127,8 +145,10 @@ class SocketManager {
 
   // --- Generation Logic (Adapted from assets.routes.js) ---
 
-  async handleSplatGeneration(socket, assetId, modelKey) {
-    socket.emit('model:generation-progress', { id: assetId, status: 'checking_cache', progress: 0 });
+  async handleSplatGeneration(socketId, assetId, modelKey) {
+    const emit = (event, data) => this.io.to(socketId).emit(event, data);
+    
+    emit('model:generation-progress', { id: assetId, status: 'checking_cache', progress: 0 });
 
     // 1. Check Cache
     const mediaItemResult = await pool.query('SELECT id FROM media_items WHERE immich_asset_id = $1', [assetId]);
@@ -142,34 +162,56 @@ class SocketManager {
         );
         if (cacheResult.rows.length > 0) {
             console.log(`[Socket] Cache hit for ${assetId}`);
-            socket.emit('model:generation-progress', { id: assetId, status: 'complete', progress: 100 });
-            socket.emit('model:generation-complete', { id: assetId, success: true, cached: true });
+            emit('model:generation-progress', { id: assetId, status: 'complete', progress: 100 });
+            emit('model:generation-complete', { id: assetId, success: true, cached: true });
             return;
         }
     }
 
     // 2. Fetch Image
-    socket.emit('model:generation-progress', { id: assetId, status: 'fetching_image', progress: 10 });
-    // Need immich connector - simplistic approach: use the one required in routes? 
-    // We didn't import immichConnector here. Let's assume it's available or we passed it in constructor?
-    // It wasn't passed. We need to require it.
-    const { immichConnector } = require('./index'); // access via index or direct
+    emit('model:generation-progress', { id: assetId, status: 'fetching_image', progress: 10 });
+    const { immichConnector } = require('./index'); 
 
-    const imageBuffer = await immichConnector.getThumbnail(assetId, { size: 'preview', format: 'JPEG' });
+    // Fetch Asset Info FIRST to determine file type
     const assetInfo = await immichConnector.getAssetInfo(assetId);
+    
+    let imageBuffer;
+    let contentType = 'image/jpeg'; 
+    let filename = assetInfo.originalFileName || 'image.jpg';
+
+    // Check for CR2 (Canon Raw) - Case insensitive check
+    const isCR2 = filename.toLowerCase().endsWith('.cr2');
+    
+    if (isCR2) {
+        console.log(`[Socket] Detected CR2 file for ${assetId}, using preview thumbnail for SHARP generation.`);
+        // Use biggest thumbnail (preview) for CR2
+        imageBuffer = await immichConnector.getThumbnail(assetId, { size: 'preview', format: 'JPEG' });
+        // contentType remains image/jpeg
+    } else {
+        console.log(`[Socket] Using full resolution file for ${assetId} for SHARP generation.`);
+        try {
+            // Try to get the original file for maximum quality
+            imageBuffer = await immichConnector.getFullResolutionFile(assetId);
+            contentType = assetInfo.originalMimeType || 'application/octet-stream';
+        } catch (err) {
+             console.warn(`[Socket] Failed to get full res file, falling back to thumbnail: ${err.message}`);
+             imageBuffer = await immichConnector.getThumbnail(assetId, { size: 'preview', format: 'JPEG' });
+             contentType = 'image/jpeg';
+        }
+    }
 
     // 3. Prepare AI Request
-    socket.emit('model:generation-progress', { id: assetId, status: 'sending_to_ai', progress: 20 });
+    emit('model:generation-progress', { id: assetId, status: 'sending_to_ai', progress: 20 });
     const formData = new FormData();
     formData.append('image', imageBuffer, {
-        filename: assetInfo.originalFileName || 'image.jpg',
-        contentType: 'image/jpeg'
+        filename: filename,
+        contentType: contentType
     });
 
     const aiUrl = process.env.AI_SERVICE_URL || 'http://ai:5000';
     
     // 4. Call AI
-    socket.emit('model:generation-progress', { id: assetId, status: 'generating', progress: 30 });
+    emit('model:generation-progress', { id: assetId, status: 'generating', progress: 30 });
     console.log(`[Socket] Calling AI service for ${assetId}...`);
     
     const aiResponse = await axios.post(`${aiUrl}/api/splat`, formData, {
@@ -179,7 +221,7 @@ class SocketManager {
     });
 
     const plyBuffer = Buffer.from(aiResponse.data);
-    socket.emit('model:generation-progress', { id: assetId, status: 'saving', progress: 80 });
+    emit('model:generation-progress', { id: assetId, status: 'saving', progress: 80 });
 
     // 5. Save & Convert
     await fs.mkdir(SPLATS_DIR, { recursive: true });
@@ -222,30 +264,28 @@ class SocketManager {
     );
 
     // 6. Convert to KSPLAT
-    socket.emit('model:generation-progress', { id: assetId, status: 'converting', progress: 90 });
+    emit('model:generation-progress', { id: assetId, status: 'converting', progress: 90 });
     
     try {
         await this.convertPlyToKsplat(plyFilePath, mediaItemId, modelKey);
-        socket.emit('model:generation-complete', { id: assetId, success: true });
+        emit('model:generation-complete', { id: assetId, success: true });
     } catch (err) {
         console.error(`[Socket] Conversion failed for ${assetId}:`, err);
         // Even if conversion fails, we have the PLY, so maybe partial success?
         // But for queue, we probably want complete success.
-        socket.emit('model:generation-complete', { id: assetId, success: true, warning: 'conversion_failed' });
+        emit('model:generation-complete', { id: assetId, success: true, warning: 'conversion_failed' });
     }
   }
   
-  async handleDepthGeneration(socket, assetId, modelKey) {
+  async handleDepthGeneration(socketId, assetId, modelKey) {
        // Simplified depth generation for socket
+       const emit = (event, data) => this.io.to(socketId).emit(event, data);
        const { immichConnector } = require('./index');
-       socket.emit('model:generation-progress', { id: assetId, status: 'generating', progress: 10 });
+       emit('model:generation-progress', { id: assetId, status: 'generating', progress: 10 });
        
        const mediaItemResult = await pool.query('SELECT id FROM media_items WHERE immich_asset_id = $1', [assetId]);
        
        // ... (Similar steps: Fetch Image -> AI -> Save)
-       // For brevity reusing logic. Real implementation should share code.
-       // Re-implementing simplified version:
-       
        const imageBuffer = await immichConnector.getThumbnail(assetId, { size: 'preview', format: 'JPEG' });
        const assetInfo = await immichConnector.getAssetInfo(assetId);
        
@@ -298,7 +338,7 @@ class SocketManager {
           [mediaItemId, modelKey, filePath, depthBuffer.length, JSON.stringify({})]
        );
        
-       socket.emit('model:generation-complete', { id: assetId, success: true });
+       emit('model:generation-complete', { id: assetId, success: true });
   }
 
   async convertPlyToKsplat(plyFilePath, mediaItemId, modelKey) {

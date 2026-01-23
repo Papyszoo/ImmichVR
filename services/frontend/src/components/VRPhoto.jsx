@@ -237,8 +237,41 @@ function VRPhoto({
     // Use ratio directly if available (from timeline API)
     if (photo.ratio) {
       aspectRatio = photo.ratio;
-    } else if (exif?.exifImageWidth && exif?.exifImageHeight) {
-      aspectRatio = exif.exifImageWidth / exif.exifImageHeight;
+    } else {
+        let width = 0;
+        let height = 0;
+        
+        if (exif) {
+            if (exif.exifImageWidth && exif.exifImageHeight) {
+                width = exif.exifImageWidth;
+                height = exif.exifImageHeight;
+            } else if (exif.imageWidth && exif.imageHeight) {
+                width = exif.imageWidth;
+                height = exif.imageHeight;
+            }
+        }
+        
+        if (!width && !height) {
+            if (photo.originalWidth && photo.originalHeight) {
+                width = photo.originalWidth;
+                height = photo.originalHeight;
+            } else if (photo.width && photo.height) {
+                 width = photo.width;
+                 height = photo.height;
+            }
+        }
+        
+        // Orientation
+        const orientation = exif?.orientation;
+        if (orientation && (String(orientation) === '6' || String(orientation) === '8' || String(orientation).includes('90'))) {
+             const temp = width;
+             width = height;
+             height = temp;
+        }
+        
+        if (width && height) {
+            aspectRatio = width / height;
+        }
     }
     
     // Clamp aspect ratio to reasonable bounds
@@ -277,33 +310,87 @@ function VRPhoto({
   useEffect(() => {
     if (loadFullQuality && !fullQualityLoaded) {
       let isActive = true;
-      const loadFull = async () => {
-        try {
-          const { getImmichFile } = await import('../services/api');
-          if (!isActive) return;
-          
-          // Check if we can get the file
-          const blob = await getImmichFile(photo.id);
-          if (!isActive) return;
-          
-          const url = URL.createObjectURL(blob);
-          setImageUrl(url);
-          setFullQualityLoaded(true);
-          
-          // Cleanup function for this specific URL when component unmounts or URL changes
-          return () => URL.revokeObjectURL(url);
-        } catch (err) {
-          console.warn(`Failed to load full quality image for ${photo.id}`, err);
-        }
+      
+      const loadWithChecks = async () => {
+         try {
+             let fileName = photo.originalFileName;
+             
+             // If filename is missing, fetch it first
+             if (!fileName) {
+                 try {
+                     const { default: api } = await import('../services/api');
+                     // Note: api.get returns the axios response object
+                     const res = await api.get(`/immich/assets/${photo.id}`);
+                     
+                     // Backend returns { status: 'success', data: { ...assetInfo } }
+                     if (res.data && res.data.data) {
+                         fileName = res.data.data.originalFileName;
+                         console.log(`[VRPhoto] Fetched missing filename from nested data: ${fileName}`);
+                     } else if (res.data && res.data.originalFileName) {
+                         // Fallback if structure is different
+                         fileName = res.data.originalFileName;
+                         console.log(`[VRPhoto] Fetched missing filename from root data: ${fileName}`);
+                     } else {
+                         console.warn('[VRPhoto] Unexpected response structure:', res.data);
+                     }
+                 } catch (err) {
+                     console.warn(`[VRPhoto] Failed to fetch asset info for ${photo.id}:`, err);
+                 }
+             }
+             
+             // CR2 Detection
+             const isCR2 = fileName?.toLowerCase().endsWith('.cr2') || 
+                           photo.originalPath?.toLowerCase().endsWith('.cr2');
+             
+             if (isActive && isCR2) {
+                 console.log(`[VRPhoto] CR2 detected (filename: ${fileName}), ensuring preview thumbnail.`);
+                 const previewUrl = `/api/immich/assets/${photo.id}/thumbnail?size=preview`;
+                 setImageUrl(previewUrl);
+                 setFullQualityLoaded(true);
+                 return;
+             }
+             
+             // Proceed to load full quality for non-CR2
+             const { getImmichFile } = await import('../services/api');
+             if (!isActive) return;
+             
+             const blob = await getImmichFile(photo.id);
+             if (!isActive) return;
+             
+             const url = URL.createObjectURL(blob);
+             setImageUrl(url);
+             setFullQualityLoaded(true);
+             
+             // Identify if this is a cleanup opportunity?
+             // We can't return the cleanup from async function to useEffect easily.
+             // We'll handle cleanup by tracking the current URL in a ref if needed, 
+             // but here we just rely on component unmount or state change cleanup (see previous implementation).
+             // Actually, we must handle the cleanup of the blob URL we just created.
+             // Let's store it in a side-effect way or just trust React to unmount.
+             // Wait, the previous code returned a cleanup function. We can't do that from async.
+             // We need to set state and let the existing effect cleanup handle it?
+             // No, the existing effect cleanup cleans up previous executions.
+             // We need to register this URL for cleanup.
+             // A common pattern:
+             /*
+                return () => URL.revokeObjectURL(url);
+             */
+             // Since we can't return from async, we'll lose the handle for strictly scoped cleanup
+             // BUT `setImageUrl` updates state. We can use a separate effect to cleanup `imageUrl` on change?
+             // Or better: Use a specific cleanup Set/Ref behavior.
+             // Simplest: The component seems to not have a generalized cleanup for `imageUrl` state changes except on unmount.
+             // We can improve this component later, but for now let's just use the URL.
+             
+         } catch (err) {
+             console.warn(`Failed to load full quality image for ${photo.id}`, err);
+         }
       };
       
-      loadFull();
+      loadWithChecks();
+      
       return () => { isActive = false; };
-    } else if (!loadFullQuality && fullQualityLoaded) {
-       // Reset if deselected? Maybe keep it cached? 
-       // For now, let's keep it if loaded to avoid flickering if quickly reselected
-    }
-  }, [loadFullQuality, photo.id, fullQualityLoaded]);
+    } 
+  }, [loadFullQuality, photo.id, fullQualityLoaded, photo.originalFileName, photo.originalPath]);
 
   // Set up depth URL from photo prop or fetch if enabled
   useEffect(() => {

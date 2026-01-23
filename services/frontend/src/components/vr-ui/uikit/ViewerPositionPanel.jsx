@@ -1,7 +1,7 @@
 /**
  * ViewerPositionPanel.jsx
  * 
- * VR-native panel for adjusting GaussianSplatViewer/ViewerItem position, scale, and rotation.
+ * VR-native panel for adjusting the entire viewer group position and scale.
  * Uses @react-three/uikit for VR-compatible UI.
  */
 import React from 'react';
@@ -61,9 +61,9 @@ const LabeledStepper = ({ label, value, min, max, step, onChange, formatValue, u
 );
 
 /**
- * ViewerPositionPanel - Adjustable position controls for 3D viewer
+ * ViewerPositionPanel - Adjustable position controls for the entire viewer group
  * 
- * @param {object} transform - Current transform: { positionX, positionY, positionZ, scale, rotationY }
+ * @param {object} transform - Current transform: { positionX, positionY, positionZ, scale }
  * @param {function} onTransformChange - Callback to update transform
  * @param {number} splatCount - Number of splats currently displayed
  * @param {array} position - [x, y, z] position of the panel in 3D space
@@ -71,10 +71,9 @@ const LabeledStepper = ({ label, value, min, max, step, onChange, formatValue, u
 function ViewerPositionPanel({ transform, onTransformChange, splatCount = 0, position = [-1.7, 1.6, -3] }) {
   const defaults = {
     positionX: 0,
-    positionY: 1.5,
-    positionZ: 0,
-    scale: 0.1,
-    rotationY: 0,
+    positionY: -0.6,
+    positionZ: -0.4,
+    scale: 1.5,
   };
 
   const handleReset = () => {
@@ -90,7 +89,7 @@ function ViewerPositionPanel({ transform, onTransformChange, splatCount = 0, pos
       <Root pixelSize={0.005}>
         <Container
           width={280}
-          height={420}
+          height={360}
           backgroundColor={COLORS.bg}
           backgroundOpacity={COLORS.bgOpacity}
           flexDirection="column"
@@ -123,7 +122,7 @@ function ViewerPositionPanel({ transform, onTransformChange, splatCount = 0, pos
           <LabeledStepper
             label="Position Y"
             value={transform.positionY}
-            min={0}
+            min={-3}
             max={5}
             step={0.1}
             onChange={(v) => updateValue('positionY', v)}
@@ -146,22 +145,12 @@ function ViewerPositionPanel({ transform, onTransformChange, splatCount = 0, pos
             label="Scale"
             value={transform.scale}
             min={0.01}
-            max={2.0}
+            max={3.0}
             step={0.05}
             onChange={(v) => updateValue('scale', v)}
             formatValue={(v) => v.toFixed(2)}
           />
 
-          {/* Rotation Y */}
-          <LabeledStepper
-            label="Rotation"
-            value={transform.rotationY}
-            min={-180}
-            max={180}
-            step={15}
-            onChange={(v) => updateValue('rotationY', v)}
-            formatValue={(v) => `${v}°`}
-          />
 
           {/* Reset Button */}
           <Container marginTop={8}>

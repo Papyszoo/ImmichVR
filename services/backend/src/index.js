@@ -6,7 +6,11 @@ const PORT = process.env.BACKEND_PORT || 3000;
 const uploadDir = process.env.UPLOAD_DIR || '/data/uploads';
 
 // Start processing worker if enabled (default: true)
+// Start processing worker if enabled (default: true)
 const autoStartWorker = process.env.AUTO_START_WORKER !== 'false';
+// DISABLED: ProcessingWorker is incompatible with the new in-memory QueueManager API. 
+// Queue processing is now handled by SocketManager/QueueManager directly.
+/*
 if (autoStartWorker) {
   // Wait a bit for services to be ready, then start
   setTimeout(() => {
@@ -14,6 +18,7 @@ if (autoStartWorker) {
     processingWorker.start(5000); // Check queue every 5 seconds
   }, 3000);
 }
+*/
 
 // Ensure upload directory exists
 fs.mkdir(uploadDir, { recursive: true }).catch(err => {

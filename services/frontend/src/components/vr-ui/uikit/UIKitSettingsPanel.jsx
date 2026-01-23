@@ -609,11 +609,26 @@ function UIKitSettingsPanel({ isOpen, onClose, settings, onSettingsChange }) {
 
                     {activeTab === 'controls' && (
                         <Container flexDirection="column" gap={16}>
-                          <Text fontSize={20} color="#F9FAFB">VR Controller</Text>
+                          <Text fontSize={20} color="#F9FAFB">VR Controller - Gallery</Text>
                           <Text fontSize={18} color="#D1D5DB">- Thumbstick: Scroll</Text>
                           <Text fontSize={18} color="#D1D5DB">- A/X: Toggle Menu</Text>
                           <Text fontSize={18} color="#D1D5DB">- B/Y: Back / Close</Text>
+                          <Text fontSize={18} color="#D1D5DB">- L3 (Left Stick Click): Toggle FPS Monitor</Text>
                           
+                          <Container height={1} backgroundColor="rgba(255,255,255,0.1)" marginY={8} />
+
+                          <Text fontSize={20} color="#F9FAFB">VR Controller - Viewer</Text>
+                          <Text fontSize={18} color="#D1D5DB">- Thumbstick Left/Right: Navigate Photos</Text>
+                          <Text fontSize={18} color="#D1D5DB">- B/Y: Exit Viewer</Text>
+                          
+                          <Container height={1} backgroundColor="rgba(255,255,255,0.1)" marginY={8} />
+                          
+                          <Text fontSize={20} color="#F9FAFB">Gaussian Splat Manipulation</Text>
+                          <Text fontSize={18} color="#D1D5DB">- Left or Right Grip: Move Splat</Text>
+                          <Text fontSize={18} color="#D1D5DB">- Both Grips: Scale (Pinch) + Rotate (Yaw & Roll)</Text>
+                          <Text fontSize={18} color="#D1D5DB">- R3 (Right Stick Click): Reset Splat</Text>
+                          <Text fontSize={16} color="#9CA3AF">* Grips only affect 3D splats, not photos</Text>
+
                           <Container height={1} backgroundColor="rgba(255,255,255,0.1)" marginY={8} />
 
                           <Text fontSize={20} color="#F9FAFB">Keyboard</Text>

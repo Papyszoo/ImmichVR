@@ -284,6 +284,25 @@ describe('ThumbnailGrid', () => {
         fileCreatedAt: '2024-01-15T11:00:00Z',
         thumbnailUrl: 'https://example.com/thumb2.jpg',
         ratio: 9/16 // Tall
+      },
+      {
+        id: 'photo3',
+        originalFileName: 'photo3.jpg',
+        fileCreatedAt: '2024-01-15T12:00:00Z',
+        thumbnailUrl: 'https://example.com/thumb3.jpg',
+        originalWidth: 2000,
+        originalHeight: 1000 // 2:1 ratio
+      },
+      {
+        id: 'photo4',
+        originalFileName: 'photo4.jpg',
+        fileCreatedAt: '2024-01-16T12:00:00Z',
+        thumbnailUrl: 'https://example.com/thumb4.jpg',
+        exifInfo: { 
+            exifImageWidth: 2000, 
+            exifImageHeight: 1000,
+            orientation: '6' // Rotated 90 degrees -> should be 1:2 ratio
+        }
       }
     ];
 

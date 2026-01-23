@@ -448,15 +448,38 @@ async function handleSplatGeneration(assetId, res) {
     }
 
     // 2. Fetch Source Image from Immich
-    console.log(`[Splat] Fetching image for ${assetId}...`);
-    const imageBuffer = await immichConnector.getThumbnail(assetId, { size: 'preview', format: 'JPEG' });
+    console.log(`[Splat] Fetching info for ${assetId}...`);
+    // Reordered: Get info first to determine type
     const assetInfo = await immichConnector.getAssetInfo(assetId);
+
+    let imageBuffer;
+    let contentType = 'image/jpeg';
+    const filename = assetInfo.originalFileName || 'image.jpg';
+    
+    // Check for CR2 (Canon Raw)
+    const isCR2 = filename.toLowerCase().endsWith('.cr2');
+
+    if (isCR2) {
+        console.log(`[Splat] Detected CR2 file for ${assetId}, using preview thumbnail for SHARP generation.`);
+        imageBuffer = await immichConnector.getThumbnail(assetId, { size: 'preview', format: 'JPEG' });
+        // contentType default is image/jpeg
+    } else {
+        console.log(`[Splat] Using full resolution file for ${assetId}...`);
+        try {
+            imageBuffer = await immichConnector.getFullResolutionFile(assetId);
+            contentType = assetInfo.originalMimeType || 'application/octet-stream';
+        } catch (err) {
+            console.warn(`[Splat] Failed to get full res, falling back to thumbnail: ${err.message}`);
+            imageBuffer = await immichConnector.getThumbnail(assetId, { size: 'preview', format: 'JPEG' });
+            contentType = 'image/jpeg';
+        }
+    }
 
     // 3. Prepare AI Request
     const formData = new FormData();
     formData.append('image', imageBuffer, {
-        filename: assetInfo.originalFileName || 'image.jpg',
-        contentType: 'image/jpeg'
+        filename: filename,
+        contentType: contentType
     });
     
     const aiUrl = process.env.AI_SERVICE_URL || 'http://ai:5000';

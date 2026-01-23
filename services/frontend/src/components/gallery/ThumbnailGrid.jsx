@@ -77,12 +77,47 @@ function ThumbnailGrid({
       group.photos.forEach((photo, index) => {
         // Calculate thumbnail width based on aspect ratio
         const exif = photo.exifInfo || {};
+        // Robust Aspect Ratio Calculation
         let aspectRatio = 1;
         if (photo.ratio) {
-          aspectRatio = photo.ratio;
-        } else if (exif.exifImageWidth && exif.exifImageHeight) {
-          aspectRatio = exif.exifImageWidth / exif.exifImageHeight;
+           aspectRatio = photo.ratio;
+        } else {
+           let width = 0;
+           let height = 0;
+           
+           if (exif) {
+             if (exif.exifImageWidth && exif.exifImageHeight) {
+                width = exif.exifImageWidth;
+                height = exif.exifImageHeight;
+             } else if (exif.imageWidth && exif.imageHeight) {
+                width = exif.imageWidth;
+                height = exif.imageHeight;
+             }
+           }
+           
+           if (!width && !height) {
+              if (photo.originalWidth && photo.originalHeight) {
+                 width = photo.originalWidth;
+                 height = photo.originalHeight;
+              } else if (photo.width && photo.height) {
+                 width = photo.width;
+                 height = photo.height;
+              }
+           }
+           
+           // Apply Orientation
+           const orientation = exif?.orientation;
+           if (orientation && (String(orientation) === '6' || String(orientation) === '8' || String(orientation).includes('90'))) {
+              const temp = width;
+              width = height;
+              height = temp;
+           }
+           
+           if (width && height) {
+              aspectRatio = width / height;
+           }
         }
+        
         aspectRatio = Math.max(0.5, Math.min(2.5, aspectRatio));
         
         const thumbWidth = thumbnailHeight * aspectRatio;

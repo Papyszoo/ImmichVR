@@ -11,8 +11,9 @@ const apiGateway = new APIGateway(aiServiceUrl);
 console.log(`API Gateway initialized with AI service URL: ${aiServiceUrl}`);
 
 // Initialize Queue Manager
-const queueManager = new QueueManager(pool);
-console.log('Queue Manager initialized');
+// Note: queueManager module exports a singleton instance now
+const queueManager = require('./queueManager');
+console.log('Queue Manager initialized (In-Memory)');
 
 // Initialize Model Manager
 const ModelManager = require('./modelManager');

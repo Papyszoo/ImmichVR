@@ -338,14 +338,51 @@ const calculateRealHeight = (photos, settings) => {
         let rowCount = 1;
         
         group.photos.forEach(photo => {
+            // Robust Aspect Ratio Calculation
             let aspectRatio = 1;
+            let width = 0;
+            let height = 0;
+            
+            // 1. Try generic ratio first (processed by Timeline API)
             if (photo.ratio) {
-               aspectRatio = photo.ratio;
-            } else if (photo.exifInfo && photo.exifInfo.exifImageWidth && photo.exifInfo.exifImageHeight) {
-               aspectRatio = photo.exifInfo.exifImageWidth / photo.exifInfo.exifImageHeight;
+                aspectRatio = photo.ratio;
             } else {
-                // Fallback for missing EXIF (common in processed generic assets)
-                aspectRatio = 1.0; 
+                // 2. Try to find raw dimensions
+                if (photo.exifInfo) {
+                   if (photo.exifInfo.exifImageWidth && photo.exifInfo.exifImageHeight) {
+                       width = photo.exifInfo.exifImageWidth;
+                       height = photo.exifInfo.exifImageHeight;
+                   } else if (photo.exifInfo.imageWidth && photo.exifInfo.imageHeight) {
+                       width = photo.exifInfo.imageWidth;
+                       height = photo.exifInfo.imageHeight;
+                   }
+                }
+                
+                if (!width && !height) {
+                   if (photo.originalWidth && photo.originalHeight) {
+                       width = photo.originalWidth;
+                       height = photo.originalHeight;
+                   } else if (photo.width && photo.height) { // Root fallback
+                       width = photo.width;
+                       height = photo.height;
+                   }
+                }
+                
+                // 3. Apply Orientation (Swap if 90 or 270 deg)
+                // Orientation values: 5, 6, 7, 8 usually imply 90 degree rotation
+                const orientation = photo.exifInfo?.orientation;
+                if (orientation && (String(orientation) === '6' || String(orientation) === '8' || String(orientation).includes('90'))) {
+                    // Swap
+                    const temp = width;
+                    width = height;
+                    height = temp;
+                }
+                
+                if (width && height) {
+                    aspectRatio = width / height;
+                } else {
+                    aspectRatio = 1.0;
+                }
             }
             aspectRatio = Math.max(0.5, Math.min(2.5, aspectRatio));
             
@@ -472,17 +509,81 @@ function VRThumbnailGallery({
   const [qualityMode, setQualityMode] = useState('HIGH'); 
   const [dpr, setDpr] = useState(1.5);
   
-  // Viewer position controls
-  const [viewerTransform, setViewerTransform] = useState({
+  // PerformanceMonitor visibility (toggled with L3 button)
+  const [showPerformanceMonitor, setShowPerformanceMonitor] = useState(false);
+  
+  // Viewer group position controls (affects entire viewer: photos, splats, UI panels)
+  const [viewerGroupTransform, setViewerGroupTransform] = useState({
     positionX: 0,
-    positionY: 1.8,
+    positionY: -0.6,
     positionZ: -0.4,
-    scale: 0.5,
-    rotationY: 0,
+    scale: 1.5,
   });
+  
+  // Gaussian Splat transform (controlled by VR controller grips)
+  const [splatTransform, setSplatTransform] = useState({
+    positionX: 0,
+    positionY: 1,
+    positionZ: -2.5,
+    scale: 2,
+    rotation: new THREE.Quaternion(1, 0, 0, 0),
+  });
+  
+  // Handle Transformation from XR Controllers (only affects GaussianSplatViewer)
+  const handleSplatTransform = useCallback(({ positionDelta, rotationDelta, scaleFactor }) => {
+     setSplatTransform(prev => {
+        const next = { ...prev };
+        
+        // 1. Position
+        if (positionDelta) {
+            next.positionX += positionDelta.x;
+            next.positionY += positionDelta.y;
+            next.positionZ += positionDelta.z;
+        }
+        
+        // 2. Scale
+        if (scaleFactor) {
+            next.scale = Math.max(0.1, Math.min(10.0, next.scale * scaleFactor));
+        }
+        
+        // 3. Rotation
+        if (rotationDelta) {
+            const currentRot = prev.rotation.clone();
+            const delta = rotationDelta; 
+            
+            // Apply delta: newRot = delta * oldRot
+            // Note: Order matters. Pre-multiply for global/local. 
+            // Usually we want to rotate the object relative to itself or world?
+            // "Rotate scene" usually means rotating the object in place.
+            currentRot.premultiply(delta);
+            next.rotation = currentRot;
+        }
+        
+        return next;
+     });
+  }, []);
   const [splatCount, setSplatCount] = useState(0);
 
+  // Convert splatTransform quaternion to Euler angles for GaussianSplatViewer
+  const splatRotationEuler = useMemo(() => {
+    const euler = new THREE.Euler();
+    euler.setFromQuaternion(splatTransform.rotation);
+    return [euler.x, euler.y, euler.z];
+  }, [splatTransform.rotation]);
 
+
+
+
+  // Reset Splat to defaults (R3 Button)
+  const handleResetSplat = useCallback(() => {
+    setSplatTransform({
+      positionX: 0,
+      positionY: 1,
+      positionZ: -2.5,
+      scale: 9,
+      rotation: new THREE.Quaternion(1, 0, 0, 0),
+    });
+  }, []);
 
   // Define completion handler for queue
   const handleQueueCompletion = useCallback((data) => {
@@ -1193,7 +1294,8 @@ function VRThumbnailGallery({
           generatingModel,
           depthCache,
           settings,
-          viewerTransform,
+          viewerGroupTransform,
+          splatTransform,
           photos 
         },
         actions: {
@@ -1201,7 +1303,8 @@ function VRThumbnailGallery({
             removeAsset: handleRemoveFile,
             selectPhoto: (id) => setSelectedPhotoId(id),
             setSettings: setSettings,
-            setViewerTransform: setViewerTransform
+            setViewerGroupTransform: setViewerGroupTransform,
+            setSplatTransform: setSplatTransform
         }
       };
     }
@@ -1245,7 +1348,7 @@ function VRThumbnailGallery({
       <Canvas 
         style={styles.canvas}
         dpr={dpr}
-        camera={{ position: [0, 1.6, 0], fov: 70, near: 0.1, far: 100 }}
+        camera={{ position: [0, 1.6, 0], fov: 70, near: 0.1, far: 1000 }}
         gl={{ antialias: qualityMode === 'HIGH' }}
       >
         <XR store={xrStore}>
@@ -1254,7 +1357,7 @@ function VRThumbnailGallery({
           <directionalLight position={[0, 5, 5]} intensity={0.3} />
 
           <PerformanceMonitor 
-            enabled={true}
+            enabled={showPerformanceMonitor}
             position={[-2, 2.5, -2]} 
             onPerformanceDrop={handlePerformanceDrop}
             qualityMode={qualityMode}
@@ -1271,6 +1374,9 @@ function VRThumbnailGallery({
              onNextPhoto={handleNext}
              onPrevPhoto={handlePrev}
              onCloseViewer={handleCloseViewer}
+             onTransform={handleSplatTransform}
+             onTogglePerformanceMonitor={() => setShowPerformanceMonitor(prev => !prev)}
+             onResetSplat={handleResetSplat}
           />
           
           <ScrollAnchoring 
@@ -1358,7 +1464,10 @@ function VRThumbnailGallery({
 
           {/* Render Viewer if photo SELECTED */}
           {selectedPhotoId && (
-             <group position={[0, 0, 0]}>
+             <group 
+                position={[viewerGroupTransform.positionX, viewerGroupTransform.positionY, viewerGroupTransform.positionZ]}
+                scale={[viewerGroupTransform.scale, viewerGroupTransform.scale, viewerGroupTransform.scale]}
+             >
                 {/* Render current and adjacent photos - HIDE when splat is active */}
                 {!(splatUrl && (splatFormat === 'ksplat' || splatFormat === 'splat' || splatFormat === 'ply' || splatFormat === 'spz')) && photos.map((photo, index) => {
                    // Only render if close to selected index (optimization)
@@ -1390,17 +1499,17 @@ function VRThumbnailGallery({
                     quality={qualityMode}
                     fileType={splatFormat}  
                     testMode={false}  
-                    position={[viewerTransform.positionX, viewerTransform.positionY, viewerTransform.positionZ]}
-                    rotation={[Math.PI, viewerTransform.rotationY * (Math.PI / 180), 0]}
-                    scale={viewerTransform.scale}
+                    position={[splatTransform.positionX, splatTransform.positionY, splatTransform.positionZ]}
+                    rotation={splatRotationEuler}
+                    scale={splatTransform.scale}
                     onLoad={(mesh, count) => setSplatCount(count || 0)}
                     onError={(err) => console.error('[Splat] Viewer error:', err)}
                   />
                 )}
                 
                 <ViewerPositionPanel
-                  transform={viewerTransform}
-                  onTransformChange={setViewerTransform}
+                  transform={viewerGroupTransform}
+                  onTransformChange={setViewerGroupTransform}
                   splatCount={splatCount}
                   position={[-2.5, 1.6, -settings.wallDistance]}
                 />

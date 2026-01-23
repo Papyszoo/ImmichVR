@@ -2,7 +2,8 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files for clean dependency installation
+# Use 'docker build --no-cache' or 'docker-compose build --no-cache' to ensure fresh build
 COPY package.json package-lock.json ./
 RUN npm ci
 

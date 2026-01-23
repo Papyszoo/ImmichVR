@@ -1,6 +1,23 @@
 {
   "runs": [
     {
+      "runNumber": 55,
+      "commit": "25cf3976c9a39c2e95c1f28d779ec9c5630febe1",
+      "timestamp": "2026-01-23T00:19:10.269Z",
+      "frontend": {
+        "passed": 0,
+        "failed": 40,
+        "total": 40
+      },
+      "e2e": {
+        "passed": 38,
+        "failed": 20,
+        "total": 58
+      },
+      "duration": "N/A",
+      "reportUrl": "reports/run-55/index.html"
+    },
+    {
       "runNumber": 54,
       "commit": "5f0f003b2b377182f02b6bbb066ff03703f8ceee",
       "timestamp": "2026-01-23T00:16:31.519Z",
@@ -152,23 +169,6 @@
       },
       "duration": "N/A",
       "reportUrl": "reports/run-33/index.html"
-    },
-    {
-      "runNumber": 32,
-      "commit": "d0592d2c22a97b09801f582c4739000fe293b140",
-      "timestamp": "2026-01-19T16:52:49.382Z",
-      "frontend": {
-        "passed": 0,
-        "failed": 0,
-        "total": 0
-      },
-      "e2e": {
-        "passed": 14,
-        "failed": 3,
-        "total": 17
-      },
-      "duration": "N/A",
-      "reportUrl": "reports/run-32/index.html"
     }
   ]
 }

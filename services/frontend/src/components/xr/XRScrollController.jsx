@@ -19,8 +19,14 @@ function XRScrollController({
   onCloseViewer
 }) {
   // Use the official hook to get controller state
-  const leftController = useXRInputSourceState('controller', 'left');
-  const rightController = useXRInputSourceState('controller', 'right');
+  // Use the official hook to get controller state - check both 'controller' and 'hand' (for SteamVR fallback)
+  const leftControllerState = useXRInputSourceState('controller', 'left');
+  const leftHandState = useXRInputSourceState('hand', 'left');
+  const leftController = leftControllerState ?? leftHandState;
+
+  const rightControllerState = useXRInputSourceState('controller', 'right');
+  const rightHandState = useXRInputSourceState('hand', 'right');
+  const rightController = rightControllerState ?? rightHandState;
   
   const lastToggleTime = useRef(0);
   const scrollAccumulator = useRef(0);
@@ -34,10 +40,14 @@ function XRScrollController({
     if (debugLogCount.current < 3 && (leftController || rightController)) {
       debugLogCount.current++;
       console.log('[XRScrollController] Controllers detected!');
-      console.log('  Left:', leftController ? 'connected' : 'none');
-      console.log('  Right:', rightController ? 'connected' : 'none');
-      if (rightController?.gamepad) {
-        console.log('  Right gamepad keys:', Object.keys(rightController.gamepad));
+      if (leftController) console.log('  Left keys:', Object.keys(leftController));
+      if (rightController) console.log('  Right keys:', Object.keys(rightController));
+      
+      const rightGamepad = rightController?.inputSource?.gamepad;
+      if (rightGamepad) {
+        console.log('  Right gamepad keys:', Object.keys(rightGamepad)); // Should work now
+      } else {
+        console.log('  Right gamepad NOT found on inputSource');
       }
     }
     
@@ -47,14 +57,22 @@ function XRScrollController({
     let bButtonPressed = false;
     
     // Process right controller (primary for scrolling)
-    if (rightController?.gamepad) {
-      const gamepad = rightController.gamepad;
+    // Process right controller (primary for scrolling)
+    const rightGamepad = rightController?.inputSource?.gamepad;
+    
+    if (rightGamepad) {
+      // Standard WebXR Gamepad Mapping (Oculus Touch / Standard)
+      // Axes: [0]=TouchpadX, [1]=TouchpadY, [2]=ThumbstickX, [3]=ThumbstickY
+      // Note: Some checks needed as arrays might be shorter if no touchpad
       
-      // Access thumbstick via the xr-standard-thumbstick property (per documentation)
-      const thumbstick = gamepad['xr-standard-thumbstick'];
-      if (thumbstick) {
-        const yAxis = thumbstick.yAxis ?? 0;
-        const xAxis = thumbstick.xAxis ?? 0;
+      const axes = rightGamepad.axes;
+      const buttons = rightGamepad.buttons;
+      
+      // Thumbstick is usually axes 2 and 3
+      if (axes && axes.length >= 4) {
+        const yAxis = axes[3]; // Up/Down
+        const xAxis = axes[2]; // Left/Right
+        
         if (Math.abs(yAxis) > 0.15) {
           totalInputY = yAxis;
         }
@@ -63,50 +81,47 @@ function XRScrollController({
         }
       }
       
-      // Check buttons - use named properties from xr-standard-gamepad mapping
-      const aButton = gamepad['a-button'];
-      const bButton = gamepad['b-button'];
-      const thumbstickButton = gamepad['xr-standard-thumbstick'];
-      
-      // B button for exit viewer
-      if (bButton?.state === 'pressed') {
-        bButtonPressed = true;
-      }
-      
-      // A button for settings toggle (only in grid mode)
-      if (aButton?.state === 'pressed') {
-        settingsPressed = true;
-      }
-      
-      // Thumbstick click as alternative for settings
-      if (thumbstickButton?.state === 'pressed') {
-        settingsPressed = true;
+      // Buttons
+      // 3: Thumbstick Click
+      // 4: A button
+      // 5: B button
+      if (buttons) {
+         // B button (5) for exit viewer
+         if (buttons[5]?.pressed) {
+           bButtonPressed = true;
+         }
+         // A button (4) or Thumbstick Click (3) for settings
+         if (buttons[4]?.pressed || buttons[3]?.pressed) {
+           settingsPressed = true;
+         }
       }
     }
     
     // Process left controller (secondary)
-    if (leftController?.gamepad) {
-      const gamepad = leftController.gamepad;
+    const leftGamepad = leftController?.inputSource?.gamepad;
+    
+    if (leftGamepad) {
+      const axes = leftGamepad.axes;
+      const buttons = leftGamepad.buttons;
       
-      const thumbstick = gamepad['xr-standard-thumbstick'];
-      if (thumbstick) {
-        const yAxis = thumbstick.yAxis ?? 0;
-        const xAxis = thumbstick.xAxis ?? 0;
-        // Use left stick if right isn't providing input
-        if (Math.abs(yAxis) > 0.15 && Math.abs(yAxis) > Math.abs(totalInputY)) {
-          totalInputY = yAxis;
-        }
-        if (Math.abs(xAxis) > 0.5 && Math.abs(xAxis) > Math.abs(totalInputX)) {
-          totalInputX = xAxis;
-        }
+      if (axes && axes.length >= 4) {
+         const yAxis = axes[3];
+         const xAxis = axes[2];
+         
+         // Use left stick if right isn't providing input
+         if (Math.abs(yAxis) > 0.15 && Math.abs(yAxis) > Math.abs(totalInputY)) {
+           totalInputY = yAxis;
+         }
+         if (Math.abs(xAxis) > 0.5 && Math.abs(xAxis) > Math.abs(totalInputX)) {
+           totalInputX = xAxis;
+         }
       }
       
-      // Check X/Y buttons on left controller
-      const xButton = gamepad['x-button'];
-      const yButton = gamepad['y-button'];
-      
-      if (xButton?.state === 'pressed' || yButton?.state === 'pressed') {
-        settingsPressed = true;
+      // X/Y buttons on left controller are usually mapped same as A/B (4/5) relative to hand
+      if (buttons) {
+        if (buttons[4]?.pressed || buttons[5]?.pressed) { 
+           settingsPressed = true;
+        }
       }
     }
     

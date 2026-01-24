@@ -32,53 +32,56 @@ function determineModelStatus(modelKey, generatedFiles, isDownloaded, modelType 
     };
   }
   
-  // Check for ready-to-use formats
-  const hasReadyFormat = modelFiles.some(f => 
-    f.format === 'png' ||       // Depth map (PNG)
-    f.format === 'jpg' ||       // Depth map (JPEG)
-    f.format === 'ksplat'       // Compressed splat (Quest 3 optimized)
-  );
-  
-  if (hasReadyFormat) {
-    const readyFile = modelFiles.find(f => 
-      f.format === 'png' || f.format === 'jpg' || f.format === 'ksplat'
-    );
-    return {
-      status: 'ready',
-      fileId: readyFile.id,
-      canGenerate: false,
-      canConvert: false,
-      canRemove: true,
-    };
-  }
-  
-  // For splat models, PLY is a usable format (raw but viewable)
-  const hasPly = modelFiles.some(f => f.format === 'ply');
-  if (hasPly) {
+  // SPECIAL HANDLING: SHARP splat model
+  // The 'sharp' row should ONLY care about the raw PLY format.
+  // The KSPLAT row is handled separately via the virtual entry.
+  if (modelKey === 'sharp' && modelType === 'splat') {
     const plyFile = modelFiles.find(f => f.format === 'ply');
-    
-    // For splat models (like SHARP), PLY is ready to use
-    if (modelType === 'splat') {
+    if (plyFile) {
       return {
         status: 'ready',
         fileId: plyFile.id,
         canGenerate: false,
-        canConvert: false, // Conversion is handled by KSPLAT virtual entry
+        canConvert: false,
+        canRemove: true,
+      };
+    }
+  } else {
+    // Check for ready-to-use formats for other models
+    const hasReadyFormat = modelFiles.some(f => 
+      f.format === 'png' ||       // Depth map (PNG)
+      f.format === 'jpg' ||       // Depth map (JPEG)
+      f.format === 'ksplat'       // Compressed splat (Quest 3 optimized)
+    );
+    
+    if (hasReadyFormat) {
+      const readyFile = modelFiles.find(f => 
+        f.format === 'png' || f.format === 'jpg' || f.format === 'ksplat'
+      );
+      return {
+        status: 'ready',
+        fileId: readyFile.id,
+        canGenerate: false,
+        canConvert: false,
         canRemove: true,
       };
     }
     
-    // For depth models, PLY needs conversion (shouldn't happen normally)
-    return {
-      status: 'can_convert',
-      fileId: plyFile.id,
-      canGenerate: false,
-      canConvert: true,
-      canRemove: true,
-    };
+    // For general splat models (non-SHARP), PLY is a usable format
+    const hasPly = modelFiles.some(f => f.format === 'ply');
+    if (hasPly && modelType === 'splat') {
+      const plyFile = modelFiles.find(f => f.format === 'ply');
+      return {
+        status: 'ready',
+        fileId: plyFile.id,
+        canGenerate: false,
+        canConvert: false,
+        canRemove: true,
+      };
+    }
   }
   
-  // Model is downloaded but no files generated
+  // Model is downloaded but no matching files generated
   return {
     status: 'missing',
     fileId: null,
@@ -139,16 +142,15 @@ export function usePhoto3DManager({ generatedFiles = [], availableModels = [], p
         isDownloaded,
       });
       
-      // If this is SHARP model, check if we should create virtual KSPLAT and SPLAT entries
+      // If this is SHARP model, check if we should create virtual KSPLAT entry
       if (model.key === 'sharp' && model.type === 'splat') {
         const sharpFiles = generatedFiles.filter(f => f.modelKey === 'sharp');
         const hasPly = sharpFiles.some(f => f.format === 'ply');
+        const ksplatFile = sharpFiles.find(f => f.format === 'ksplat');
         
-        // Only show conversion entries if SHARP PLY has been generated
-        if (hasPly) {
-          // KSPLAT entry (compressed format) - only conversion format supported
-          // Note: SPLAT format removed - use PLY or KSPLAT instead
-          const ksplatFile = sharpFiles.find(f => f.format === 'ksplat');
+        // Show KSPLAT entry if it exists OR if the source PLY exists (allowing conversion)
+        if (hasPly || ksplatFile) {
+          // KSPLAT entry (compressed format)
           if (ksplatFile) {
             options.push({
               key: 'ksplat',

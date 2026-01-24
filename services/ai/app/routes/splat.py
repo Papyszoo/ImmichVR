@@ -46,14 +46,42 @@ def generate_splat():
             output_dir = os.path.join(tmpdir, "output")
             os.makedirs(output_dir, exist_ok=True)
             
-            # Read and convert image to RGB JPEG
+            # Read image bytes
             image_bytes = file.read()
-            image = Image.open(io.BytesIO(image_bytes))
-            if image.mode != 'RGB':
-                image = image.convert('RGB')
-            image.save(input_path, 'JPEG', quality=95)
             
-            print(f"[Splat] Saved input image to {input_path} ({image.size})")
+            # INSPECT: Check if we can just write bytes directly to preserve EXIF/Metadata
+            # This is critical for Orientation and Focal Length detection in sharp_model.
+            try:
+                # Peek at format
+                img_peek = Image.open(io.BytesIO(image_bytes))
+                is_jpeg = img_peek.format == 'JPEG' or img_peek.format == 'MPO'
+                
+                if is_jpeg:
+                    # Write RAW bytes to preserve exact metadata
+                    with open(input_path, 'wb') as f:
+                        f.write(image_bytes)
+                    print(f"[Splat] Saved RAW input image to {input_path} (Format: {img_peek.format})")
+                else:
+                    # For non-JPEGs, we must convert/save
+                    # Try to preserve EXIF if possible
+                    exif_data = img_peek.info.get('exif')
+                    
+                    if img_peek.mode != 'RGB':
+                        img_peek = img_peek.convert('RGB')
+                        
+                    save_kwargs = {'quality': 95}
+                    if exif_data:
+                        save_kwargs['exif'] = exif_data
+                        
+                    img_peek.save(input_path, 'JPEG', **save_kwargs)
+                    print(f"[Splat] Converted and saved input image to {input_path}")
+                    
+            except Exception as e:
+                print(f"[Splat] Error inspecting image, falling back to standard convert: {e}")
+                image = Image.open(io.BytesIO(image_bytes))
+                if image.mode != 'RGB':
+                    image = image.convert('RGB')
+                image.save(input_path, 'JPEG', quality=95)
             
             # Generate splat
             ply_path = sharp_model.predict(input_path, output_dir)

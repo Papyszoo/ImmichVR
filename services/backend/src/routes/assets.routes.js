@@ -427,8 +427,7 @@ async function handleSplatGeneration(assetId, res) {
         const mediaItemId = mediaItemResult.rows[0].id;
         const cacheResult = await pool.query(
             `SELECT id, file_path, format FROM generated_assets_3d 
-             WHERE media_item_id = $1 AND asset_type = 'splat' AND model_key = $2
-             ORDER BY format = 'ksplat' DESC`,
+             WHERE media_item_id = $1 AND asset_type = 'splat' AND model_key = $2 AND format = 'ply'`,
             [mediaItemId, modelKey]
         );
         

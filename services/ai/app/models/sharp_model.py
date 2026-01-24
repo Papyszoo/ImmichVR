@@ -14,7 +14,7 @@ from ..config import Config
 try:
     from sharp.models import create_predictor, PredictorParams
     from sharp.utils import io as sharp_io
-    from sharp.utils.gaussians import save_ply, unproject_gaussians
+    from sharp.utils.gaussians import save_ply, unproject_gaussians, apply_transform
     SHARP_AVAILABLE = True
 except ImportError as e:
     SHARP_AVAILABLE = False
@@ -252,13 +252,14 @@ class SharpModel:
             self.load_model()
             
         logger.info(f"[SharpModel] Processing {input_image_path}...")
-        logger.info(f"[SharpModel] Debug: Using existing model instance {id(self._model)} on device {self.device}")
         
         try:
-            # 1. Load Image using library utility (handles exif rotation, etc)
-            # Returns: image (H,W,3 uint8), metadata, focal_length_px
+            # 1. Load Image using library utility
+            limit_val = 2200 if self.device == 'cpu' else 1536 # Slightly higher limit for CPU RAM
             image, _, f_px = sharp_io.load_rgb(Path(input_image_path))
             
+            logger.info(f"[SharpModel] Loaded image: {image.shape}, f_px: {f_px:.2f} (Device: {self.device})")
+
             # 2. Run Inference
             gaussians = self._predict_gaussians(image, f_px)
             
@@ -267,13 +268,13 @@ class SharpModel:
             output_dir_path = Path(output_dir)
             output_dir_path.mkdir(parents=True, exist_ok=True)
             
-            # Get original image dims for saving
-            h, w, _ = image.shape
+            # Get dimensions for saving
+            h, w = image.shape[:2]
             
             t_start_save = time.time()
             save_ply(gaussians, f_px, (h, w), output_path)
             t_end_save = time.time()
-            logger.info(f"[SharpModel] Save PLY: {t_end_save - t_start_save:.3f}s")
+            logger.info(f"[SharpModel] Save PLY (h={h}, w={w}): {t_end_save - t_start_save:.3f}s")
             
             # Explicit cleanup
             del gaussians

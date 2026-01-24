@@ -802,6 +802,13 @@ function VRThumbnailGallery({
       
       if (activeDepthModel === modelKey) {
         setActiveDepthModel(null);
+        
+        // Clear splat URL if it was active
+        if (splatUrl) {
+            URL.revokeObjectURL(splatUrl);
+            setSplatUrl(null);
+        }
+
         setDepthCache(prev => {
           const next = { ...prev };
           delete next[selectedPhotoId];

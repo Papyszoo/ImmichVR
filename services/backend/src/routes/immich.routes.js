@@ -298,11 +298,25 @@ router.get('/processed', async (req, res) => {
           FROM generated_assets_3d ga
           JOIN media_items m ON ga.media_item_id = m.id
           WHERE ga.asset_type = $1
-          GROUP BY m.immich_asset_id, m.captured_at, m.uploaded_at, m.id
-          ORDER BY m.captured_at DESC, m.id DESC
+          GROUP BY m.immich_asset_id, m.captured_at
+          ORDER BY m.captured_at DESC, MAX(m.id::text) DESC
           LIMIT $2 OFFSET $3
         `;
         queryParams = [assetType, size, offset];
+    }
+    
+    // Safety check: Also fix the 'all' query just in case
+    if (assetType === 'all') {
+         query = `
+          SELECT m.immich_asset_id
+          FROM generated_assets_3d ga
+          JOIN media_items m ON ga.media_item_id = m.id
+          WHERE ga.asset_type IN ('depth', 'depth_thumbnail', 'splat', 'video_depth_frames', 'video_sbs')
+          GROUP BY m.immich_asset_id, m.captured_at
+          ORDER BY m.captured_at DESC, MAX(m.id::text) DESC
+          LIMIT $1 OFFSET $2
+        `;
+        queryParams = [size, offset];
     }
     
     const dbResult = await pool.query(query, queryParams);

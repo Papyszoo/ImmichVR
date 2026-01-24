@@ -17,6 +17,45 @@ const { immichConnector, modelManager } = require('../services');
 const SPLATS_DIR = process.env.SPLATS_DIR || '/app/data/splats';
 
 /**
+ * GET /api/assets/map
+ * Returns a lightweight map of all existing 3D assets.
+ * Format: { [immichId]: { depth: ['small'], splat: ['sharp'] } }
+ * used for UI to quickly check "is this photo already processed?"
+ */
+router.get('/map', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT m.immich_asset_id, ga.asset_type, ga.model_key
+            FROM generated_assets_3d ga
+            JOIN media_items m ON ga.media_item_id = m.id
+        `);
+        
+        const map = {};
+        result.rows.forEach(row => {
+            if (!map[row.immich_asset_id]) {
+                map[row.immich_asset_id] = {};
+            }
+            if (!map[row.immich_asset_id][row.asset_type]) {
+                map[row.immich_asset_id][row.asset_type] = [];
+            }
+            // push unique
+            if (!map[row.immich_asset_id][row.asset_type].includes(row.model_key)) {
+                map[row.immich_asset_id][row.asset_type].push(row.model_key);
+            }
+        });
+        
+        res.json({
+            status: 'success',
+            count: Object.keys(map).length,
+            map: map
+        });
+    } catch (error) {
+         console.error('Error fetching asset map:', error);
+         res.status(500).json({ error: 'Failed to fetch asset map' });
+    }
+});
+
+/**
  * GET /api/assets/:id/files
  * List all generated files for a specific photo (media_item_id or immich_asset_id)
  */
@@ -420,7 +459,7 @@ async function handleDepthGeneration(assetId, modelKey, res) {
 async function handleSplatGeneration(assetId, res) {
     const modelKey = 'sharp';
     
-    // 1. Check Cache
+    // 1. Check Cache / Existing Asset
     const mediaItemResult = await pool.query('SELECT id FROM media_items WHERE immich_asset_id = $1', [assetId]);
     
     if (mediaItemResult.rows.length > 0) {
@@ -432,13 +471,24 @@ async function handleSplatGeneration(assetId, res) {
         );
         
         if (cacheResult.rows.length > 0) {
-            // Prefer .ksplat over .ply
             const cachedFile = cacheResult.rows[0];
+            
+            // CHECK: If this is a generation request (POST), we should probably just return success "already exists"
+            // unless 'force' is specified?
+            // Since this function handles the response, we can just return the file content immediately.
+            // OR if it's strictly an API call expecting JSON status, it might be different.
+            // But currently this is used by the POST /api/assets/:id/generate endpoint which expects void/result?
+            // Actually router calls await handleSplatGeneration(id, res).
+            
+            const force = false; // TODO: read from req.body if we pass req down here.
+            // For now, assume if it exists, we return it.
+            
             try {
                 const cachedBuffer = await fs.readFile(cachedFile.file_path);
                 res.setHeader('Content-Type', 'application/octet-stream');
                 res.setHeader('X-Asset-Cache', 'hit');
                 res.setHeader('X-Asset-Format', cachedFile.format);
+                res.setHeader('X-Asset-Status', 'already_exists');
                 return res.send(cachedBuffer);
             } catch (err) {
                 console.warn(`Cache file missing at ${cachedFile.file_path}, regenerating...`);

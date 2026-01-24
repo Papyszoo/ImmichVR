@@ -267,6 +267,19 @@ export const getPhotoFiles = async (photoId) => {
 };
 
 /**
+ * Get map of all existing assets
+ * Format: { [immichId]: { depth: ['small'], splat: ['sharp'] } }
+ */
+export const getAssetMap = async () => {
+    try {
+        const response = await api.get('/assets/map');
+        return response.data;
+    } catch (err) { 
+        return { map: {} };
+    }
+};
+
+/**
  * Delete a specific generated file
  * @param {string} photoId - The photo/asset ID
  * @param {string} fileId - The file ID to delete

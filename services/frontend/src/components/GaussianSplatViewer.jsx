@@ -20,6 +20,23 @@ const FILE_TYPE_MAP = {
   'spz': SplatFileType.SPZ,
 };
 
+// Cache loaders to prevent context exhaustion
+// We use a global cache outside the component
+const loaderCache = {};
+
+const getLoader = (fileType) => {
+    // Default to SplatFileType.PLY if undefined, though usually fileType is passed
+    const type = fileType || SplatFileType.PLY;
+    
+    if (!loaderCache[type]) {
+        console.log(`[GaussianSplatViewer] Creating new SplatLoader for type: ${type}`);
+        const loader = new SplatLoader();
+        loader.fileType = type;
+        loaderCache[type] = loader;
+    }
+    return loaderCache[type];
+};
+
 /**
  * GaussianSplatViewer - Renders 3D Gaussian Splats using SparkJS SplatMesh
  * 
@@ -93,104 +110,65 @@ function GaussianSplatViewer({
     if (!url) return;
     
     // Convert string fileType to SparkJS enum
-    const splatFileType = fileType ? FILE_TYPE_MAP[fileType.toLowerCase()] : undefined;
+    // If fileType is provided use it, otherwise try to detect from extension
+    let derivedFileType = undefined;
+    if (fileType) {
+        derivedFileType = FILE_TYPE_MAP[fileType.toLowerCase()];
+    } else {
+        const ext = url.split('.').pop().toLowerCase();
+        derivedFileType = FILE_TYPE_MAP[ext];
+    }
     
-    console.log('[GaussianSplatViewer] Creating SplatMesh with URL:', url);
-    console.log('[GaussianSplatViewer] FileType:', fileType, '-> SplatFileType:', splatFileType);
-    console.log('[GaussianSplatViewer] Position:', position, 'Rotation:', rotation, 'Scale:', scale, 'TestMode:', testMode, 'Quality:', quality);
+    // Default to PLY if detection fails
+    if (derivedFileType === undefined) {
+        console.warn('[GaussianSplatViewer] Could not detect file type, defaulting to PLY');
+        derivedFileType = SplatFileType.PLY;
+    }
+    
+    console.log('[GaussianSplatViewer] Loading URL:', url);
+    console.log('[GaussianSplatViewer] Resolved FileType:', derivedFileType);
     
     // Clean up previous mesh if exists
     cleanupSplatMesh();
     
-    // For non-auto-detectable formats (ksplat, splat), use SplatLoader with explicit fileType
-    if (splatFileType && (splatFileType === SplatFileType.KSPLAT || splatFileType === SplatFileType.SPLAT)) {
-      console.log('[GaussianSplatViewer] Using SplatLoader with explicit fileType:', splatFileType);
-      
-      const loader = new SplatLoader();
-      loader.fileType = splatFileType; // Set fileType BEFORE loading
-      
-      loader.loadAsync(url)
+    // Use cached loader for ALL types to ensure resource sharing
+    const loader = getLoader(derivedFileType);
+    
+    loader.loadAsync(url)
         .then((packedSplats) => {
-          console.log('[GaussianSplatViewer] SplatLoader loaded successfully, creating SplatMesh');
-          
-          const splatMesh = new SplatMesh({ packedSplats });
-          
-          // Set position, rotation and scale
-          splatMesh.position.set(position[0], position[1], position[2]);
-          splatMesh.rotation.set(rotation[0], rotation[1], rotation[2]);
-          splatMesh.scale.setScalar(scale);
-          
-          // Apply initial quality settings
-          if (quality === 'LOW') splatMesh.maxStdDev = 2.0;
+            console.log('[GaussianSplatViewer] Loader completed.');
 
-          // Add to scene
-          scene.add(splatMesh);
-          splatMeshRef.current = splatMesh;
-          
-          setIsLoaded(true);
-          
-          // Get splat count from packedSplats
-          const count = packedSplats?.size || packedSplats?.numSplats || 0;
-          setSplatCount(count);
-          console.log('[GaussianSplatViewer] Splat count:', count);
-          
-          if (onLoadRef.current) {
-            onLoadRef.current(splatMesh, count);
-          }
+            const splatMesh = new SplatMesh({ packedSplats });
+            
+            // Set position, rotation and scale
+            splatMesh.position.set(position[0], position[1], position[2]);
+            splatMesh.rotation.set(rotation[0], rotation[1], rotation[2]);
+            splatMesh.scale.setScalar(scale);
+            
+            // Apply initial quality settings
+            if (quality === 'LOW') splatMesh.maxStdDev = 2.0;
+
+            // Add to scene
+            scene.add(splatMesh);
+            splatMeshRef.current = splatMesh;
+            
+            setIsLoaded(true);
+            
+            // Get splat count
+            const count = packedSplats?.size || packedSplats?.numSplats || 0;
+            setSplatCount(count);
+            console.log('[GaussianSplatViewer] Splat count:', count);
+            
+            if (onLoadRef.current) {
+                onLoadRef.current(splatMesh, count);
+            }
         })
         .catch((error) => {
-          console.error('[GaussianSplatViewer] SplatLoader failed:', error);
-          if (onErrorRef.current) {
-            onErrorRef.current(error);
-          }
+            console.error('[GaussianSplatViewer] Load failed:', error);
+            if (onErrorRef.current) {
+                onErrorRef.current(error);
+            }
         });
-    } else {
-      // For auto-detectable formats (ply, spz), use SplatMesh directly
-      console.log('[GaussianSplatViewer] Using SplatMesh directly for auto-detectable format');
-      
-      const splatMesh = new SplatMesh({
-        url: url,
-        onLoad: (mesh) => {
-          console.log('[GaussianSplatViewer] SplatMesh loaded successfully');
-          console.log('[GaussianSplatViewer] Mesh properties:', Object.keys(mesh || {}));
-          setIsLoaded(true);
-          
-          // Apply initial quality settings
-          if (quality === 'LOW') mesh.maxStdDev = 2.0;
-
-          // Try multiple sources for splat count
-          // SparkJS stores splat data in packedSplats after loading
-          const count = mesh?.packedSplats?.size 
-            || mesh?.packedSplats?.numSplats 
-            || mesh?.numSplats
-            || mesh?.geometry?.attributes?.position?.count 
-            || 0;
-          setSplatCount(count);
-          console.log('[GaussianSplatViewer] Splat count:', count);
-          
-          if (onLoadRef.current) {
-            onLoadRef.current(mesh, count);
-          }
-        }
-      });
-      
-      // Set initial position, rotation and scale
-      splatMesh.position.set(position[0], position[1], position[2]);
-      splatMesh.rotation.set(rotation[0], rotation[1], rotation[2]);
-      splatMesh.scale.setScalar(scale);
-      
-      // Add to scene
-      scene.add(splatMesh);
-      splatMeshRef.current = splatMesh;
-      
-      // Handle initialization errors
-      splatMesh.initialized.catch((error) => {
-        console.error('[GaussianSplatViewer] Failed to load splat:', error);
-        if (onErrorRef.current) {
-          onErrorRef.current(error);
-        }
-      });
-    }
     
     // Cleanup on unmount or URL change
     return () => {
@@ -198,9 +176,7 @@ function GaussianSplatViewer({
       setIsLoaded(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url, fileType, scene]); // Note: excluding 'quality' from dependency array to prevent reload on quality change (handled by effect above)
-  
-  // ... rest of property updates (position, rotation, scale) ... 
+  }, [url, fileType, scene]); 
   
   // Update position when props change
   useEffect(() => {
@@ -228,7 +204,3 @@ function GaussianSplatViewer({
 }
 
 export default GaussianSplatViewer;
-
-
-
-

@@ -18,10 +18,45 @@ function ThumbnailGrid({
   selectionMode = false,
   selectedPhotos = new Set(),
 
-  disableVerticalShift = false
+  disableVerticalShift = false,
+  assetMap = {} // Add assetMap to props
 }) {
   const { galleryWidth, thumbnailHeight, wallCurvature, wallDistance, gap, depthScale } = settings;
   
+  // Helper to position items in a row
+  function processRow(row, width, y, items, galleryWidth, wallDistance, wallCurvature, depthCache) {
+    const startX = -width / 2;
+    let currentX = startX;
+    
+    row.forEach(item => {
+      const x = currentX + item.width / 2;
+      
+      // Apply curvature
+      let finalX = x;
+      let finalZ = -wallDistance;
+      let rotationY = 0;
+      
+      if (wallCurvature > 0) {
+        // arcLength = angle * radius, so angle = arcLength / radius
+        const arcAngle = (x / wallDistance) * wallCurvature;
+        
+        // Position on the curved wall
+        finalX = Math.sin(arcAngle) * wallDistance;
+        finalZ = -Math.cos(arcAngle) * wallDistance;
+        rotationY = arcAngle;
+      }
+      
+      items.push({
+        ...item,
+        position: [finalX, y, finalZ],
+        rotation: [0, rotationY, 0],
+        depthUrl: depthCache[item.photo.id]
+      });
+      
+      currentX += item.width + gap;
+    });
+  }
+
   // Calculate layout (flex-like wrapping)
   const allItems = useMemo(() => {
     // Group photos by date
@@ -150,39 +185,6 @@ function ThumbnailGrid({
     return { items, headers };
   }, [photos, galleryWidth, thumbnailHeight, gap, wallDistance, wallCurvature, depthCache]);
   
-  // Helper to position items in a row
-  function processRow(row, width, y, items, galleryWidth, wallDistance, wallCurvature, depthCache) {
-    const startX = -width / 2;
-    let currentX = startX;
-    
-    row.forEach(item => {
-      const x = currentX + item.width / 2;
-      
-      // Apply curvature
-      let finalX = x;
-      let finalZ = -wallDistance;
-      let rotationY = 0;
-      
-      if (wallCurvature > 0) {
-        // arcLength = angle * radius, so angle = arcLength / radius
-        const arcAngle = (x / wallDistance) * wallCurvature;
-        
-        // Position on the curved wall
-        finalX = Math.sin(arcAngle) * wallDistance;
-        finalZ = -Math.cos(arcAngle) * wallDistance;
-        rotationY = arcAngle;
-      }
-      
-      items.push({
-        ...item,
-        position: [finalX, y, finalZ],
-        rotation: [0, rotationY, 0],
-        depthUrl: depthCache[item.photo.id]
-      });
-      
-      currentX += item.width + gap;
-    });
-  }
 
   // Filter to only visible items based on camera position
   const visibleData = useMemo(() => {
@@ -239,21 +241,28 @@ function ThumbnailGrid({
       ))}
 
       {/* Thumbnails */}
-      {visibleData.items.map(({ photo, position, rotation, depthUrl, useSimpleParallax }) => (
-        <VRPhoto
-          key={photo.id}
-          photo={{ ...photo, depthUrl }}
-          position={position}
-          rotation={rotation}
-          onSelect={(p) => !settingsOpen && onSelectPhoto(p, position, rotation)}
-          depthScale={depthScale}
-          thumbnailHeight={thumbnailHeight}
-          enableDepth={false} // Force disable depth for grid thumbnails
-          useSimpleParallax={useSimpleParallax}
-          isSelected={selectedPhotos.has(photo.id)}
-          selectionMode={selectionMode}
-        />
-      ))}
+      {visibleData.items.map(({ photo, position, rotation, depthUrl, useSimpleParallax }) => {
+        // Check if processed (SHARP splat exists)
+        const existing = (assetMap && assetMap[photo.id]) || {};
+        const isProcessed = existing.splat && existing.splat.includes('sharp');
+
+        return (
+            <VRPhoto
+              key={photo.id}
+              photo={{ ...photo, depthUrl }}
+              position={position}
+              rotation={rotation}
+              onSelect={(p) => !settingsOpen && onSelectPhoto(p, position, rotation)}
+              depthScale={depthScale}
+              thumbnailHeight={thumbnailHeight}
+              enableDepth={false} // Force disable depth for grid thumbnails
+              useSimpleParallax={useSimpleParallax}
+              isSelected={selectedPhotos.has(photo.id)}
+              selectionMode={selectionMode}
+              isProcessed={isProcessed}
+            />
+        );
+      })}
     </group>
   );
 }

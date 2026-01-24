@@ -222,7 +222,8 @@ function VRPhoto({
   opacity = 1.0,
   loadFullQuality = false, // New prop to trigger full quality load
   isSelected = false,
-  selectionMode = false
+  selectionMode = false,
+  isProcessed = false // New prop
 }) {
   const [hovered, setHovered] = useState(false);
   const [imageUrl, setImageUrl] = useState(null);
@@ -361,26 +362,6 @@ function VRPhoto({
              setImageUrl(url);
              setFullQualityLoaded(true);
              
-             // Identify if this is a cleanup opportunity?
-             // We can't return the cleanup from async function to useEffect easily.
-             // We'll handle cleanup by tracking the current URL in a ref if needed, 
-             // but here we just rely on component unmount or state change cleanup (see previous implementation).
-             // Actually, we must handle the cleanup of the blob URL we just created.
-             // Let's store it in a side-effect way or just trust React to unmount.
-             // Wait, the previous code returned a cleanup function. We can't do that from async.
-             // We need to set state and let the existing effect cleanup handle it?
-             // No, the existing effect cleanup cleans up previous executions.
-             // We need to register this URL for cleanup.
-             // A common pattern:
-             /*
-                return () => URL.revokeObjectURL(url);
-             */
-             // Since we can't return from async, we'll lose the handle for strictly scoped cleanup
-             // BUT `setImageUrl` updates state. We can use a separate effect to cleanup `imageUrl` on change?
-             // Or better: Use a specific cleanup Set/Ref behavior.
-             // Simplest: The component seems to not have a generalized cleanup for `imageUrl` state changes except on unmount.
-             // We can improve this component later, but for now let's just use the URL.
-             
          } catch (err) {
              console.warn(`Failed to load full quality image for ${photo.id}`, err);
          }
@@ -469,6 +450,25 @@ function VRPhoto({
             opacity={isSelected ? 0.6 : 0.2} 
           />
         </mesh>
+      )}
+
+      {/* Processed Indicator (3D Ready) */}
+      {isProcessed && (
+        <group position={[initialDimensions.width/2 - 0.08, initialDimensions.height/2 - 0.08, 0.01]}> 
+           {/* Simple badge */}
+           <mesh>
+             <circleGeometry args={[0.05, 16]} />
+             <meshBasicMaterial color="#06B6D4" /> 
+           </mesh>
+        </group>
+      )}
+      
+      {/* Disabled Overlay for Selection Mode */}
+      {selectionMode && isProcessed && (
+         <mesh position={[0, 0, 0.02]}>
+            <planeGeometry args={[initialDimensions.width, initialDimensions.height]} />
+            <meshBasicMaterial color="#000000" transparent opacity={0.6} />
+         </mesh>
       )}
     </group>
   );

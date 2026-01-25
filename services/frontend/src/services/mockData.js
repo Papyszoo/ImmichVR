@@ -72,6 +72,11 @@ mockPhotos.forEach(photo => {
 export const mockTimeline = [
   {
     _id: '2025-01-01',
+    timeBucket: '2025-01-01T00:00:00.000Z', // Should be compliant with substring(0,4)
+    // Actually typically expected format is ISO or '2025-01-01'
+    // Let's match real API likely: '2025-01-01' or similar. 
+    // Code uses substring(0, 4) for year.
+    timeBucket: '2025-01-01', 
     count: mockPhotos.length,
     bucketDate: '2025-01-01T00:00:00.000Z',
   }

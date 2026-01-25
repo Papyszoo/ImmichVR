@@ -41,3 +41,9 @@ temp/
 test-results/
 test-results.json
 playwright-report/
+
+# Demo Assets (Ignore large files, allow images)
+services/frontend/public/demo/*
+!services/frontend/public/demo/
+!services/frontend/public/demo/*.jpg
+!services/frontend/public/demo/*.jpeg

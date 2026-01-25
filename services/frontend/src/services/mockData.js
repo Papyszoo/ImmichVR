@@ -11,10 +11,8 @@
  */
 
 const BASE_ASSET_URL = 'https://github.com/Papyszoo/ImmichVR/releases/download/assets'; 
+const BASE_PATH = import.meta.env.VITE_BASE_URL || '/';
 
-/**
- * Generate mock photos list
- */
 export const mockPhotos = [
   // Photos with 3D assets
   { id: '1', hasSplat: true },
@@ -26,8 +24,11 @@ export const mockPhotos = [
 ].map(item => ({
     id: item.id,
     originalPath: `demo/${item.id}.jpg`, 
-    thumbPath: `${BASE_ASSET_URL}/${item.id}.jpg`, // Use external URL
-    thumbnailUrl: `${BASE_ASSET_URL}/${item.id}.jpg`, // CRITICAL: VRPhoto checks this first
+    // Use LOCAL assets for images to prevent CORS issues on GitHub Pages
+    // These must be committed to the repo in services/frontend/public/demo/
+    thumbPath: `${BASE_PATH}demo/${item.id}.jpg`, 
+    thumbnailUrl: `${BASE_PATH}demo/${item.id}.jpg`,
+    
     type: 'IMAGE',
     deviceId: 'DEMO_DEVICE',
     ownerId: 'DEMO_USER',

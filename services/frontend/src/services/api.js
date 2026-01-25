@@ -289,7 +289,14 @@ export const getModels = async () => {
  * Get AI models status from AI service (via backend proxy)
  */
 export const getAIModels = async () => {
-    if (IS_DEMO) return { base: 'loaded' };
+    if (IS_DEMO) return { 
+        data: {
+            models: [
+                { key: 'small', name: 'Small (Fast)', is_downloaded: true, loaded: false, type: 'depth' },
+                { key: 'base', name: 'Base (Balanced)', is_downloaded: true, loaded: true, type: 'depth' }
+            ]
+        }
+    };
   const response = await api.get('/settings/models/ai', { timeout: 10000 });
   return response.data;
 };

@@ -42,6 +42,9 @@ export const mockPhotos = [
       make: 'Demo Camera',
       model: 'Virtual Lens',
       fps: 0,
+      // Add dimensions to fix Aspect Ratio / Gap calculations in Grid
+      exifImageWidth: 800,
+      exifImageHeight: 600,
     },
 }));
 
@@ -54,7 +57,6 @@ export const mockAssetMap = {};
 // Populate asset map only for those that should have splats
 mockPhotos.forEach(photo => {
   // Check our source config above (id 1-3 have splats)
-  // We can infer this from the ID for simplicity or check the source array if we kept it accesssible.
   // Re-checking condition:
   const hasSplat = ['1', '2', '3'].includes(photo.id);
   
@@ -72,10 +74,6 @@ mockPhotos.forEach(photo => {
 export const mockTimeline = [
   {
     _id: '2025-01-01',
-    timeBucket: '2025-01-01T00:00:00.000Z', // Should be compliant with substring(0,4)
-    // Actually typically expected format is ISO or '2025-01-01'
-    // Let's match real API likely: '2025-01-01' or similar. 
-    // Code uses substring(0, 4) for year.
     timeBucket: '2025-01-01', 
     count: mockPhotos.length,
     bucketDate: '2025-01-01T00:00:00.000Z',
@@ -83,8 +81,9 @@ export const mockTimeline = [
 ];
 
 export const getMockPhotoUrl = (id) => {
-    // Return external URL for release assets
-    return `${BASE_ASSET_URL}/${id}.jpg`;
+    // Return LOCAL URL for image download (fixing CORS)
+    // In Demo Mode, we treat the local thumbnail as the "Original" file
+    return `${BASE_PATH}demo/${id}.jpg`;
 };
 
 export const getMockSplatUrl = (id) => {

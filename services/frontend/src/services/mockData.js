@@ -25,8 +25,9 @@ export const mockPhotos = [
   { id: '5', hasSplat: false }
 ].map(item => ({
     id: item.id,
-    originalPath: `demo/${item.id}.jpg`, // Placeholder path, intercepted by API
-    thumbPath: `demo/${item.id}.jpg`,
+    originalPath: `demo/${item.id}.jpg`, 
+    thumbPath: `${BASE_ASSET_URL}/${item.id}.jpg`, // Use external URL
+    thumbnailUrl: `${BASE_ASSET_URL}/${item.id}.jpg`, // CRITICAL: VRPhoto checks this first
     type: 'IMAGE',
     deviceId: 'DEMO_DEVICE',
     ownerId: 'DEMO_USER',

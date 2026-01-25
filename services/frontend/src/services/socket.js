@@ -6,6 +6,20 @@ const API_URL = import.meta.env.VITE_API_URL || '/';
 // Note: In docker/prod, this might need to point to window.location or configured URL
 
 export const getSocket = () => {
+  if (import.meta.env.VITE_DEMO_MODE === true) {
+      if (!socket) {
+          console.log('[Socket] Demo Mode: Returning mock socket');
+          socket = {
+              on: (event, cb) => {},
+              off: (event, cb) => {},
+              emit: (event, data) => console.log('[Socket Mock] emit:', event, data),
+              id: 'mock-socket-id',
+              connected: true
+          };
+      }
+      return socket;
+  }
+
   if (!socket) {
     console.log(`[Socket] Connecting to ${API_URL}`);
     socket = io(API_URL, {

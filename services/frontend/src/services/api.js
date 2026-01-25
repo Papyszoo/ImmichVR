@@ -290,12 +290,11 @@ export const getModels = async () => {
  */
 export const getAIModels = async () => {
     if (IS_DEMO) return { 
-        data: {
-            models: [
-                { key: 'small', name: 'Small (Fast)', is_downloaded: true, loaded: false, type: 'depth' },
-                { key: 'base', name: 'Base (Balanced)', is_downloaded: true, loaded: true, type: 'depth' }
-            ]
-        }
+        models: [
+            { key: 'small', name: 'Small (Fast)', is_downloaded: true, loaded: false, type: 'depth' },
+            { key: 'base', name: 'Base (Balanced)', is_downloaded: true, loaded: true, type: 'depth' },
+            { key: 'sharp', name: 'SHARP (High Quality)', is_downloaded: true, loaded: true, type: 'splat' }
+        ]
     };
   const response = await api.get('/settings/models/ai', { timeout: 10000 });
   return response.data;
@@ -410,6 +409,36 @@ export const getAssetMap = async () => {
     } catch (err) { 
         return { map: {} };
     }
+};
+
+/**
+ * Download a specific generated file
+ * @param {string} photoId - The photo/asset ID
+ * @param {string} fileId - The file ID to download
+ */
+export const downloadAssetFile = async (photoId, fileId) => {
+    if (IS_DEMO) {
+        // Determine type based on fileId or just try to serve a mock
+        // We know we use 'demo-splat' and 'demo-depth' in getPhotoFiles mock
+        if (fileId === 'demo-splat') {
+             const url = getMockSplatUrl(photoId); // This usually returns a string URL
+             // If caller expects a Blob, we must fetch it. 
+             // VRThumbnailGallery expects a Blob to createObjectUrl.
+             const res = await fetch(url);
+             return await res.blob();
+        }
+        if (fileId === 'demo-depth') {
+             // Return empty blob or placeholder depth
+             // Ideally we'd have a mock depth map
+             return new Blob([], { type: 'image/jpeg' });
+        }
+        return new Blob([], { type: 'application/octet-stream' });
+    }
+  const response = await api.get(`/assets/${photoId}/files/${fileId}/download`, {
+    responseType: 'blob',
+    timeout: 60000, 
+  });
+  return response.data;
 };
 
 /**

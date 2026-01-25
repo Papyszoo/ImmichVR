@@ -11,7 +11,7 @@
  */
 
 const BASE_ASSET_URL = 'https://github.com/Papyszoo/ImmichVR/releases/download/assets'; 
-const BASE_PATH = import.meta.env.VITE_BASE_URL || '/';
+const BASE_PATH = import.meta.env.BASE_URL || '/';
 
 export const mockPhotos = [
   // Photos with 3D assets

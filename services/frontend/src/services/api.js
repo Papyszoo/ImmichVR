@@ -111,7 +111,7 @@ export const getImmichPhotos = async (page = 0, size = 100) => {
  * @param {number} size - Page size
  */
 export const getProcessedPhotos = async (page = 0, size = 100) => {
-  if (IS_DEMO) return mockPhotos;
+  if (IS_DEMO) return { data: mockPhotos };
   const response = await api.get('/immich/processed', {
     params: { page, size, type: 'all' }
   });
@@ -125,7 +125,7 @@ export const getProcessedPhotos = async (page = 0, size = 100) => {
  * Get Immich timeline buckets
  */
 export const getImmichTimeline = async () => {
-    if (IS_DEMO) return mockTimeline;
+    if (IS_DEMO) return { data: mockTimeline };
   const response = await api.get('/immich/timeline');
   return response.data;
 };
@@ -139,7 +139,7 @@ export const getImmichTimeline = async () => {
  * @param {string} bucket - Bucket identifier
  */
 export const getImmichBucket = async (bucket) => {
-    if (IS_DEMO) return mockPhotos;
+    if (IS_DEMO) return { data: mockPhotos };
   const response = await api.get(`/immich/timeline/${encodeURIComponent(bucket)}`);
   return response.data;
 };

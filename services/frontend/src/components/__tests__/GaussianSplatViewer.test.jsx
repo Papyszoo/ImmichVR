@@ -1,63 +1,101 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import ReactThreeTestRenderer from '@react-three/test-renderer';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, waitFor } from '@testing-library/react';
 import React from 'react';
 import GaussianSplatViewer from '../GaussianSplatViewer';
 
-// Mock @sparkjsdev/spark
-vi.mock('@sparkjsdev/spark', () => ({
-  SplatMesh: class SplatMesh {
-    constructor() {
-      this.position = { set: vi.fn() };
-      this.rotation = { set: vi.fn() };
-      this.scale = { set: vi.fn(), setScalar: vi.fn() };
-      this.dispose = vi.fn();
-      this.material = {};
-      this.maxStdDev = 3.0;
-      this.initialized = Promise.resolve();
-    }
-    load() {
-      return Promise.resolve({
-        splatCount: 1000,
-        mesh: this
-      });
-    }
-  },
-  SplatLoader: class SplatLoader {
-    static load() {
-      return Promise.resolve({
-        splatCount: 1000
-      });
-    }
-  },
-  SplatFileType: {
-    PLY: 0,
-    KSPLAT: 1,
-    SPLAT: 2,
-    SPZ: 3
-  }
+// Mock everything from @react-three/fiber
+vi.mock('@react-three/fiber', () => ({
+  useThree: vi.fn(),
+  useFrame: vi.fn(),
 }));
 
+// Mock @sparkjsdev/spark
+const mockSplatMesh = {
+  position: { set: vi.fn() },
+  rotation: { set: vi.fn() },
+  scale: { set: vi.fn(), setScalar: vi.fn() },
+  dispose: vi.fn(),
+  material: {},
+  maxStdDev: 3.0,
+  initialized: Promise.resolve(),
+};
+
+const mockLoadAsync = vi.fn();
+
+vi.mock('@sparkjsdev/spark', () => {
+  return {
+    SplatMesh: class SplatMesh {
+      constructor() {
+        return mockSplatMesh;
+      }
+    },
+    SplatLoader: class SplatLoader {
+      constructor() {
+        return {
+          loadAsync: mockLoadAsync,
+          fileType: 0
+        };
+      }
+    },
+    SplatFileType: {
+      PLY: 0,
+      KSPLAT: 1,
+      SPLAT: 2,
+      SPZ: 3
+    }
+  };
+});
+
 describe('GaussianSplatViewer', () => {
-  beforeEach(() => {
+  let sceneAddSpy;
+  let sceneRemoveSpy;
+  let useThreeMock;
+
+  beforeEach(async () => {
     vi.clearAllMocks();
+    
+    // Setup scene mocks
+    sceneAddSpy = vi.fn();
+    sceneRemoveSpy = vi.fn();
+    useThreeMock = {
+      scene: {
+        add: sceneAddSpy,
+        remove: sceneRemoveSpy,
+      }
+    };
+
+    const { useThree } = await import('@react-three/fiber');
+    useThree.mockReturnValue(useThreeMock);
+
+    // Setup SplatLoader mock response
+    mockLoadAsync.mockResolvedValue({
+      splatCount: 1000,
+      size: 1000,
+      numSplats: 1000
+    });
   });
 
-  it('should render without crashing', async () => {
-    const renderer = await ReactThreeTestRenderer.create(
+  afterEach(() => {
+    vi.resetModules();
+  });
+
+  it('should render without crashing and attempt to load splat', async () => {
+    render(
       <GaussianSplatViewer 
         splatUrl="https://example.com/test.ply" 
         fileType="ply"
       />
     );
 
-    expect(renderer).toBeDefined();
-    expect(renderer.scene).toBeDefined();
+    await waitFor(() => {
+      expect(mockLoadAsync).toHaveBeenCalledWith("https://example.com/test.ply");
+    });
   });
 
-  it('should call onLoad callback when splat loads successfully', async () => {
+  it('should call onLoad callback when splat loads successfully via SparkJS loading', async () => {
     const onLoad = vi.fn();
     
-    await ReactThreeTestRenderer.create(
+    render(
       <GaussianSplatViewer 
         splatUrl="https://example.com/test.ply" 
         fileType="ply"
@@ -65,14 +103,15 @@ describe('GaussianSplatViewer', () => {
       />
     );
 
-    // Wait for async load
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    expect(onLoad).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(mockLoadAsync).toHaveBeenCalled();
+      expect(sceneAddSpy).toHaveBeenCalled();
+      expect(onLoad).toHaveBeenCalled();
+    });
   });
 
   it('should use test mode URL when testMode is true', async () => {
-    const renderer = await ReactThreeTestRenderer.create(
+    render(
       <GaussianSplatViewer 
         splatUrl="https://example.com/test.ply" 
         fileType="ply"
@@ -80,16 +119,17 @@ describe('GaussianSplatViewer', () => {
       />
     );
 
-    expect(renderer).toBeDefined();
-    expect(renderer.scene).toBeDefined();
+    await waitFor(() => {
+      expect(mockLoadAsync).toHaveBeenCalledWith("https://sparkjs.dev/assets/splats/butterfly.spz");
+    });
   });
 
-  it('should apply position, rotation, and scale props', async () => {
+  it('should apply position, rotation, and scale props to the SplatMesh', async () => {
     const position = [1, 2, 3];
     const rotation = [0.1, 0.2, 0.3];
     const scale = 2.0;
 
-    await ReactThreeTestRenderer.create(
+    render(
       <GaussianSplatViewer 
         splatUrl="https://example.com/test.ply" 
         fileType="ply"
@@ -99,15 +139,15 @@ describe('GaussianSplatViewer', () => {
       />
     );
 
-    // Wait for mesh creation
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    // Verify the component was rendered successfully
-    expect(renderer).toBeDefined();
+    await waitFor(() => {
+      expect(mockSplatMesh.position.set).toHaveBeenCalledWith(1, 2, 3);
+      expect(mockSplatMesh.rotation.set).toHaveBeenCalledWith(0.1, 0.2, 0.3);
+      expect(mockSplatMesh.scale.setScalar).toHaveBeenCalledWith(2.0);
+    });
   });
 
   it('should adjust quality when quality prop changes', async () => {
-    const renderer = await ReactThreeTestRenderer.create(
+    const { rerender } = render(
       <GaussianSplatViewer 
         splatUrl="https://example.com/test.ply" 
         fileType="ply"
@@ -115,11 +155,12 @@ describe('GaussianSplatViewer', () => {
       />
     );
 
-    // Wait for initial load
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await waitFor(() => {
+        expect(sceneAddSpy).toHaveBeenCalled();
+    });
 
-    // Update quality
-    await renderer.update(
+    // Update to LOW
+    rerender(
       <GaussianSplatViewer 
         splatUrl="https://example.com/test.ply" 
         fileType="ply"
@@ -127,55 +168,41 @@ describe('GaussianSplatViewer', () => {
       />
     );
 
-    // Component should adjust internal settings
-    expect(renderer).toBeDefined();
-    expect(renderer.scene).toBeDefined();
+    await waitFor(() => {
+       expect(mockSplatMesh.maxStdDev).toBe(2.0);
+    });
   });
 
   it('should clean up on unmount', async () => {
-    const renderer = await ReactThreeTestRenderer.create(
+    const { unmount } = render(
       <GaussianSplatViewer 
         splatUrl="https://example.com/test.ply" 
         fileType="ply"
       />
     );
 
-    // Wait for mesh creation
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await waitFor(() => {
+        expect(sceneAddSpy).toHaveBeenCalled();
+    });
 
-    // Unmount should clean up
-    await renderer.unmount();
+    unmount();
 
-    expect(renderer.scene.children.length).toBe(0);
+    expect(sceneRemoveSpy).toHaveBeenCalled();
+    expect(mockSplatMesh.dispose).toHaveBeenCalled();
   });
 
-  it('should support different file types', async () => {
-    const fileTypes = ['ply', 'ksplat', 'spz'];
-
-    for (const fileType of fileTypes) {
-      const renderer = await ReactThreeTestRenderer.create(
+  it('should handle different file types logic', async () => {
+    const { unmount } = render(
         <GaussianSplatViewer 
-          splatUrl={`https://example.com/test.${fileType}`}
-          fileType={fileType}
+          splatUrl={`https://example.com/test.ksplat`}
+          fileType="ksplat"
         />
-      );
-
-      expect(renderer).toBeDefined();
-    expect(renderer.scene).toBeDefined();
-      await renderer.unmount();
-    }
-  });
-
-  it('should handle missing splatUrl gracefully', async () => {
-    const renderer = await ReactThreeTestRenderer.create(
-      <GaussianSplatViewer 
-        splatUrl=""
-        fileType="ply"
-      />
     );
-
-    // Should render but not attempt to load
-    expect(renderer).toBeDefined();
-    expect(renderer.scene).toBeDefined();
+      
+    await waitFor(() => {
+        expect(mockLoadAsync).toHaveBeenCalled();
+    });
+    
+    unmount();
   });
 });

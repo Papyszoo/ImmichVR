@@ -132,17 +132,25 @@ function VideoDepthPlayer({ media, onClose, onNext, onPrevious }) {
 
     extractFrames();
 
+    extractFrames();
+
+    return () => {
+      if (playIntervalRef.current) {
+        clearInterval(playIntervalRef.current);
+      }
+    };
+  }, [media]);
+
+  // Cleanup frames on unmount or when frames change
+  useEffect(() => {
     return () => {
       frames.forEach(frame => {
         if (frame.url) {
           URL.revokeObjectURL(frame.url);
         }
       });
-      if (playIntervalRef.current) {
-        clearInterval(playIntervalRef.current);
-      }
     };
-  }, [media]);
+  }, [frames]);
 
   // Handle playback
   useEffect(() => {

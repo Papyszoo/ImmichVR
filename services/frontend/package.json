@@ -11,7 +11,8 @@
     "start": "vite",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "build:demo": "vite build --mode demo"
   },
   "dependencies": {
     "@react-spring/three": "^10.0.3",

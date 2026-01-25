@@ -246,6 +246,57 @@ class SharpModel:
         
         return gaussians
 
+    def _sort_gaussians_spatially(self, gaussians):
+        try:
+            t0 = time.time()
+            
+            if hasattr(gaussians, 'means'):
+                positions = gaussians.means
+            elif hasattr(gaussians, 'xyz'):
+                positions = gaussians.xyz
+            else:
+                logger.warning("[SharpModel] No position attribute found for sorting. Skipping sort.")
+                return gaussians
+
+            min_pos, _ = torch.min(positions, dim=0)
+            max_pos, _ = torch.max(positions, dim=0)
+            pos_norm = (positions - min_pos) / (max_pos - min_pos + 1e-6)
+
+            bits = 10
+            buckets = 1 << bits # 1024
+            discrete = (pos_norm * (buckets - 1)).long()
+
+            morton_indices = discrete[:, 0] + \
+                             (discrete[:, 1] << bits) + \
+                             (discrete[:, 2] << (2 * bits))
+            perm = torch.argsort(morton_indices)
+
+            num_points = positions.shape[0]
+            
+            attrs_to_sort = ['means', 'xyz', 'colors', 'rgb', 'sh', 'opacities', 'opacity', 
+                             'scales', 'scaling', 'rotations', 'quats', 'features_dc', 'features_rest']
+
+            sorted_count = 0
+            for attr_name in dir(gaussians):
+                if attr_name.startswith('_'): continue
+                
+                try:
+                    val = getattr(gaussians, attr_name)
+                    if isinstance(val, torch.Tensor) and val.shape[0] == num_points:
+                        setattr(gaussians, attr_name, val[perm])
+                        sorted_count += 1
+                except Exception:
+                    pass
+
+            t1 = time.time()
+            logger.info(f"[SharpModel] Spatially sorted {num_points} splats in {t1-t0:.3f}s")
+            
+            return gaussians
+
+        except Exception as e:
+            logger.error(f"[SharpModel] Error during spatial sorting: {e}")
+            return gaussians
+
     def predict(self, input_image_path: str, output_dir: str) -> str:
         self.last_used = time.time()
         if self._model is None:
@@ -255,7 +306,7 @@ class SharpModel:
         
         try:
             # 1. Load Image using library utility
-            limit_val = 2200 if self.device == 'cpu' else 1536 # Slightly higher limit for CPU RAM
+            limit_val = 2200 if self.device == 'cpu' else 1536 
             image, _, f_px = sharp_io.load_rgb(Path(input_image_path))
             
             logger.info(f"[SharpModel] Loaded image: {image.shape}, f_px: {f_px:.2f} (Device: {self.device})")
@@ -263,6 +314,11 @@ class SharpModel:
             # 2. Run Inference
             gaussians = self._predict_gaussians(image, f_px)
             
+            # --- DODANO TUTAJ: SORTOWANIE PRZESTRZENNE ---
+            # Sortujemy zanim zapiszemy do pliku
+            gaussians = self._sort_gaussians_spatially(gaussians)
+            # ---------------------------------------------
+
             # 3. Save Output
             output_path = Path(output_dir) / (Path(input_image_path).stem + ".ply")
             output_dir_path = Path(output_dir)

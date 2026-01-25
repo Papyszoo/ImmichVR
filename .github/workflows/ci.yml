@@ -177,8 +177,8 @@ jobs:
           # Add the tests directory specifically
           git add tests/
           
-          # Optional: Remove legacy root files if they exist to clean up
-          # git rm --ignore-unmatch index.html history.json reports
+          # Remove legacy root files if they exist to clean up
+          git rm --ignore-unmatch index.html history.json reports
           
           git commit -m "Update test reports for run #${{ github.run_number }}" || echo "No changes to commit"
           git push origin gh-pages

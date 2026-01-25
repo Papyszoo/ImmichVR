@@ -137,11 +137,16 @@ jobs:
         run: |
           echo "Files in root before restore:"
           ls -la
-          if [ -f history.json ]; then
-            echo "Found history.json in root, copying..."
+          # Check for history in the new 'tests' subdirectory
+          if [ -f tests/history.json ]; then
+            echo "Found history.json in tests/, copying..."
+            cp tests/history.json .github/test-dashboard/history.json
+          elif [ -f history.json ]; then
+            # Fallback for migration
+            echo "Found history.json in root (legacy), copying..."
             cp history.json .github/test-dashboard/history.json
           else
-            echo "No history.json found in root"
+            echo "No history.json found"
           fi
       
       - name: Aggregate test results
@@ -151,19 +156,29 @@ jobs:
           ls -la
           node aggregate.js
       
-      - name: Copy dashboard files to root
+      - name: Copy dashboard files to tests directory
         run: |
-          cp .github/test-dashboard/index.html ./index.html
-          cp .github/test-dashboard/history.json ./history.json
-          mkdir -p reports
+          mkdir -p tests/reports
+          
+          # Move dashboard files
+          cp .github/test-dashboard/index.html tests/index.html
+          cp .github/test-dashboard/history.json tests/history.json
+          
+          # Move report
           if [ -d "temp/e2e/playwright-report" ]; then
-            cp -r temp/e2e/playwright-report reports/run-${{ github.run_number }}
+            cp -r temp/e2e/playwright-report tests/reports/run-${{ github.run_number }}
           fi
       
       - name: Commit and push to gh-pages
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add index.html history.json reports/
+          
+          # Add the tests directory specifically
+          git add tests/
+          
+          # Optional: Remove legacy root files if they exist to clean up
+          # git rm --ignore-unmatch index.html history.json reports
+          
           git commit -m "Update test reports for run #${{ github.run_number }}" || echo "No changes to commit"
           git push origin gh-pages

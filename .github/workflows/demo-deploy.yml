@@ -37,4 +37,5 @@ jobs:
         with:
           folder: services/frontend/build
           branch: gh-pages
-          clean: true # Warning: This removes existing files in gh-pages (like test reports) if they aren't re-generated
+          clean: true 
+          clean-exclude: tests

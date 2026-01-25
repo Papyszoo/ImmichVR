@@ -87,5 +87,6 @@ export const getMockPhotoUrl = (id) => {
 };
 
 export const getMockSplatUrl = (id) => {
-    return `${BASE_ASSET_URL}/${id}.ply`;
+    // Return url to assets hosted on gh-pages 'demo-assets' folder (Same Origin)
+    return `${BASE_PATH}demo-assets/${id}.ply`;
 };

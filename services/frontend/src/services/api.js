@@ -365,7 +365,31 @@ export const deleteModel = async (modelKey) => {
  * @param {string} photoId - The photo/asset ID
  */
 export const getPhotoFiles = async (photoId) => {
-    if (IS_DEMO) return mockAssetMap[photoId] || {};
+    if (IS_DEMO) {
+        const generated = mockAssetMap[photoId] || {};
+        const files = [];
+        
+        // Convert mock map to files list expected by frontend
+        if (generated.splat) {
+            generated.splat.forEach(model => files.push({ 
+                id: 'demo-splat', // Fake ID
+                type: 'splat', 
+                modelKey: 'sharp', // Match expected key for Sharp splats or use 'base'
+                format: 'ply',
+                model 
+            }));
+        }
+        if (generated.depth) {
+            generated.depth.forEach(model => files.push({ 
+                id: 'demo-depth', 
+                type: 'depth', 
+                modelKey: 'small',
+                model 
+            }));
+        }
+        
+        return { files };
+    }
   const response = await api.get(`/assets/${photoId}/files`);
   return response.data;
 };

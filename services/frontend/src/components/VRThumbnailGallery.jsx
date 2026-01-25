@@ -916,42 +916,42 @@ function VRThumbnailGallery({
         }
         
         try {
-          const downloadUrl = `/api/assets/${selectedPhotoId}/files/${file.id}/download`;
-          console.log(`[handleSelectDepth] Downloading depth file from: ${downloadUrl}`);
-          const response = await fetch(downloadUrl);
-          if (response.ok) {
-            const blob = await response.blob();
-            const url = URL.createObjectURL(blob);
-            setDepthCache(prev => ({ ...prev, [selectedPhotoId]: url }));
-            setActiveDepthModel(modelKey);
-            console.log(`[handleSelectDepth] Depth loaded successfully for photo ${selectedPhotoId}`);
-          }
+          console.log(`[handleSelectDepth] Downloading depth file (ID: ${file.id})`);
+          // Use API service to handle download + mocking
+          const { downloadAssetFile } = await import('../services/api');
+          const blob = await downloadAssetFile(selectedPhotoId, file.id);
+          
+          const url = URL.createObjectURL(blob);
+          setDepthCache(prev => ({ ...prev, [selectedPhotoId]: url }));
+          setActiveDepthModel(modelKey);
+          console.log(`[handleSelectDepth] Depth loaded successfully for photo ${selectedPhotoId}`);
+          
         } catch (err) { console.error('[handleSelectDepth] Depth load error:', err); }
       } else if (file.type === 'splat') {
         try {
-          const downloadUrl = `/api/assets/${selectedPhotoId}/files/${file.id}/download`;
-          console.log(`[handleSelectDepth] Downloading splat file from: ${downloadUrl}`);
-          const response = await fetch(downloadUrl);
-          if (response.ok) {
-            const blob = await response.blob();
-            if (blob.size === 0) {
-              console.log('[handleSelectDepth] Splat file is empty');
-              return;
-            }
-            
-            if (splatUrl) URL.revokeObjectURL(splatUrl);
-            const url = URL.createObjectURL(blob);
-            console.log(`[handleSelectDepth] Splat loaded successfully for photo ${selectedPhotoId}, format: ${file.format}, size: ${blob.size} bytes`);
-            setSplatUrl(url);
-            setSplatFormat(file.format || 'ply');
-            setActiveDepthModel(modelKey);
-            
-            setDepthCache(prev => {
-              const newCache = { ...prev };
-              delete newCache[selectedPhotoId];
-              return newCache;
-            });
+          console.log(`[handleSelectDepth] Downloading splat file (ID: ${file.id})`);
+          // Use API service to handle download + mocking
+          const { downloadAssetFile } = await import('../services/api');
+          const blob = await downloadAssetFile(selectedPhotoId, file.id);
+
+          if (blob.size === 0) {
+            console.log('[handleSelectDepth] Splat file is empty');
+            return;
           }
+            
+          if (splatUrl) URL.revokeObjectURL(splatUrl);
+          const url = URL.createObjectURL(blob);
+          console.log(`[handleSelectDepth] Splat loaded successfully for photo ${selectedPhotoId}, format: ${file.format}, size: ${blob.size} bytes`);
+          setSplatUrl(url);
+          setSplatFormat(file.format || 'ply');
+          setActiveDepthModel(modelKey);
+            
+          setDepthCache(prev => {
+            const newCache = { ...prev };
+            delete newCache[selectedPhotoId];
+            return newCache;
+          });
+          
         } catch (err) { console.error('[handleSelectDepth] Splat load error:', err); }
       }
     } finally {

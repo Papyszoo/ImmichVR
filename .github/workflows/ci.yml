@@ -157,8 +157,8 @@ jobs:
         working-directory: gh-pages-root
         run: |
           echo "Preparing Clean Deployment..."
-          # Remove everything in root EXCEPT .git and tests/
-          find . -maxdepth 1 ! -name '.git' ! -name 'tests' ! -name '.' -exec rm -rf {} +
+          # Remove everything in root EXCEPT .git, tests/, and demo-assets/
+          find . -maxdepth 1 ! -name '.git' ! -name 'tests' ! -name 'demo-assets' ! -name '.' -exec rm -rf {} +
           
           # Copy Demo App to Root
           echo "Copying Demo App..."

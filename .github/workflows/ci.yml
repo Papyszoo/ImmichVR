@@ -180,7 +180,6 @@ jobs:
           
           # 2. Run Aggregation (uses temp/ artifacts downloaded in root)
           cd .github/test-dashboard
-          npm ci
           node aggregate.js
           cd ../..
           

@@ -1,6 +1,23 @@
 {
   "runs": [
     {
+      "runNumber": 67,
+      "commit": "591de5e5e0e54df000dd9561408be2eaad0621b2",
+      "timestamp": "2026-01-25T14:50:48.124Z",
+      "frontend": {
+        "passed": 0,
+        "failed": 0,
+        "total": 0
+      },
+      "e2e": {
+        "passed": 33,
+        "failed": 25,
+        "total": 58
+      },
+      "duration": "N/A",
+      "reportUrl": "reports/run-67/index.html"
+    },
+    {
       "runNumber": 66,
       "commit": "724cbc1881527c3b05a78224e606138c56ca534d",
       "timestamp": "2026-01-25T14:47:59.730Z",

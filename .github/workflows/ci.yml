@@ -92,10 +92,10 @@ jobs:
         working-directory: tests/e2e
         run: docker compose -f docker-compose.e2e.yml down -v
 
-  deploy-reports:
-    name: Deploy Test Reports to GitHub Pages
+  deploy-all:
+    name: Deploy Demo & Reports to GitHub Pages
     runs-on: ubuntu-latest
-    needs: [e2e-tests]  # Only depend on E2E tests, frontend tests may fail
+    needs: [e2e-tests] 
     if: always() && github.ref == 'refs/heads/main'
     permissions:
       contents: write
@@ -103,17 +103,34 @@ jobs:
       id-token: write
     
     steps:
-      - name: Checkout code
+      # 1. BUILD DEMO APP (From Main)
+      - name: Checkout Code (Main)
         uses: actions/checkout@v4
         with:
-          ref: gh-pages
-          fetch-depth: 0
+          fetch-depth: 1
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: services/frontend/package-lock.json
       
+      - name: Install Dependencies
+        working-directory: services/frontend
+        run: npm ci --legacy-peer-deps
+      
+      - name: Build Demo App
+        working-directory: services/frontend
+        env:
+           VITE_BASE_URL: /ImmichVR/
+        run: |
+           npm run build:demo
+           # Move build to a safe temp location outside of workspace
+           mkdir -p /home/runner/demo_build
+           cp -r build/* /home/runner/demo_build/
+      
+      # 2. PREPARE DEPLOYMENT (Switch to gh-pages)
       - name: Download frontend test results
         uses: actions/download-artifact@v4
         with:
@@ -127,58 +144,67 @@ jobs:
           name: e2e-test-results
           path: temp/e2e
         continue-on-error: true
+
+      - name: Checkout gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          fetch-depth: 0
+          path: gh-pages-root
       
-      - name: Checkout main branch dashboard files
+      # 3. ASSEMBLE CONTENT
+      - name: Assemble Deployment
+        working-directory: gh-pages-root
         run: |
-          git fetch origin main
-          git checkout origin/main -- .github/test-dashboard
-      
-      - name: Restore existing history
-        run: |
-          echo "Files in root before restore:"
-          ls -la
-          # Check for history in the new 'tests' subdirectory
-          if [ -f tests/history.json ]; then
-            echo "Found history.json in tests/, copying..."
-            cp tests/history.json .github/test-dashboard/history.json
-          elif [ -f history.json ]; then
-            # Fallback for migration
-            echo "Found history.json in root (legacy), copying..."
-            cp history.json .github/test-dashboard/history.json
-          else
-            echo "No history.json found"
-          fi
-      
-      - name: Aggregate test results
-        run: |
-          cd .github/test-dashboard
-          echo "Files in .github/test-dashboard:"
-          ls -la
-          node aggregate.js
-      
-      - name: Copy dashboard files to tests directory
-        run: |
+          echo "Preparing Clean Deployment..."
+          # Remove everything in root EXCEPT .git and tests/
+          find . -maxdepth 1 ! -name '.git' ! -name 'tests' ! -name '.' -exec rm -rf {} +
+          
+          # Copy Demo App to Root
+          echo "Copying Demo App..."
+          cp -r /home/runner/demo_build/* .
+          
+          # Ensure tests directory exists
           mkdir -p tests/reports
-          
-          # Move dashboard files
-          cp .github/test-dashboard/index.html tests/index.html
-          cp .github/test-dashboard/history.json tests/history.json
-          
-          # Move report
-          if [ -d "temp/e2e/playwright-report" ]; then
-            cp -r temp/e2e/playwright-report tests/reports/run-${{ github.run_number }}
+
+      - name: Process Test Reports
+        # Note: We are running script from MAIN workspace (checkout step 1 left files there?),
+        # BUT step 2 checkout to 'gh-pages-root' might not have affected root workspace if we used 'path'.
+        # Wait, step 1 checked out to root. Step 5 checked out to 'gh-pages-root'.
+        # So root workspace still has Main code. Good.
+        run: |
+          # 1. Restore history from gh-pages to dashboard script location
+          if [ -f gh-pages-root/tests/history.json ]; then
+             cp gh-pages-root/tests/history.json .github/test-dashboard/history.json
           fi
-      
-      - name: Commit and push to gh-pages
+          
+          # 2. Run Aggregation (uses temp/ artifacts downloaded in root)
+          cd .github/test-dashboard
+          npm ci
+          node aggregate.js
+          cd ../..
+          
+          # 3. Copy results to gh-pages-root/tests
+          cp .github/test-dashboard/index.html gh-pages-root/tests/index.html
+          cp .github/test-dashboard/history.json gh-pages-root/tests/history.json
+          
+          if [ -d "temp/e2e/playwright-report" ]; then
+             cp -r temp/e2e/playwright-report gh-pages-root/tests/reports/run-${{ github.run_number }}
+          fi
+
+      # 4. DEPLOY
+      - name: Commit and Push
+        working-directory: gh-pages-root
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Add the tests directory specifically
-          git add tests/
+          git add .
           
-          # Remove legacy root files if they exist to clean up
-          git rm --ignore-unmatch index.html history.json reports
-          
-          git commit -m "Update test reports for run #${{ github.run_number }}" || echo "No changes to commit"
-          git push origin gh-pages
+          # Check if there are changes
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Deploy Demo & Reports for run #${{ github.run_number }}"
+            git push origin gh-pages
+          fi
